@@ -133,3 +133,6 @@ dmypy.json
 
 # credential
 cred/
+
+# skip data first
+data/

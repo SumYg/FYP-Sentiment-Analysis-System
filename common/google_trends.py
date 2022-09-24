@@ -1,6 +1,6 @@
 from pytrends.request import TrendReq
 # from pprint import pprint
-# import logging
+import logging
 # pytrend = TrendReq(hl='en-US', tz=360)
 # keywords = ['intel', 'amd', 'samsung', 'apple', 'tesla', '4']
 # pytrend.build_payload(
@@ -28,10 +28,10 @@ class GoogleTrends():
         https://trends.google.com/trends/trendingsearches/daily?geo=US
         """
         # pytrend = TrendReq(hl='en-US', tz=360)
-
+        logging.info("Get Trending Searches")
         trending_searches = self.pytrend.trending_searches(pn=pn)
         # logging.info(trending_searches)
-        print(trending_searches)
+        logging.info(trending_searches)
         # pprint(pytrend.realtime_trending_searches(pn='US'))
         return trending_searches
 
@@ -41,11 +41,12 @@ class GoogleTrends():
         Get related keywords
         """
         # pytrend = TrendReq(hl='en-US', tz=360)
+        logging.info("Get suggestions")
         suggestions = self.pytrend.suggestions(keyword)
-        print(suggestions)
+        logging.info(suggestions)
         return suggestions
 
 if __name__ == '__main__':
-    # get_trending_searches()
     google_trends = GoogleTrends()
-    google_trends.get_suggestions("Alex")
+    # google_trends.get_suggestions("Alex")
+    google_trends.get_trending_searches()
