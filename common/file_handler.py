@@ -7,25 +7,32 @@ import logging
 
 ROOT_PATH = './data'
 
-def save_df2parquet(df, filename, path=ROOT_PATH):
-    save_path = join_paths(path, f"{filename}_{current_time_string()}.parquet.bz")
-    df.to_parquet(save_path, compression='brotli')
-    logging.info(f"Saved df to {save_path}")
-    return save_path
+def current_time_string():
+    ft = "%Y-%m-%dT%H-%M-%S"
+    t = datetime.datetime.now().strftime(ft)
+    return t
+
+class FilesSaver:
+    def __init__(self) -> None:
+        self.files_path = join_paths(ROOT_PATH, current_time_string())
+        makedirs(self.files_path)
+
+    def save_df2parquet(self, df, filename, path=None):
+        save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.parquet.bz")
+        df.to_parquet(save_path, compression='brotli')
+        logging.info(f"Saved df to {save_path}")
+        return save_path
+
+    def save2csv(self, df, filename, path=None):
+        save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.csv")
+        df.to_csv(save_path, index=False)
 
 def read_parquet(path):
     logging.info(f"Read df from {path}")
     return pd.read_parquet(path)
 
-def current_time_string():
-    #4: to make the time timezone-aware pass timezone to .now()
-    ft = "%Y-%m-%dT%H-%M-%S"
-    t = datetime.datetime.now().strftime(ft)
-    return t
 
-def save2csv(df, filename, path=ROOT_PATH):
-    save_path = join_paths(path, f"{filename}_{current_time_string()}.csv")
-    df.to_csv(save_path, index=False)
+
 
 
 # split parquet by size

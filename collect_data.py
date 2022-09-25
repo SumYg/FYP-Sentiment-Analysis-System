@@ -1,9 +1,10 @@
-from common.file_handler import read_parquet, save_df2parquet, current_time_string, save2csv
+from common.file_handler import read_parquet, current_time_string, FilesSaver
 from common.twitter_api import TwitterAPI
 from common.google_trends import GoogleTrends
 import logging
 import sys
 from os import makedirs
+from os.path import basename
 from pathvalidate import sanitize_filepath
 import pandas as pd
 
@@ -17,13 +18,15 @@ logging.basicConfig(
     ]
 )
 
-def pipeline(tweets_no):
+def pipeline(tweets_no=100):
     google_trends = GoogleTrends()
 
     keywords_file_map = []
 
     # skip = True
     twitter_api = TwitterAPI()
+
+    files_saver = FilesSaver()
 
     for _, keyword in google_trends.get_trending_searches().itertuples():
         logging.info("Going to get "+keyword)
@@ -42,17 +45,18 @@ def pipeline(tweets_no):
             if result.shape[0] < tweets_no:
                 logging.warning("Not enough tweets collected: "
                             f"Expected {tweets_no} but got {result.shape[0]} tweets")
-            save_path = save_df2parquet(result, safe_name)
-            keywords_file_map.append((keyword, save_path))
+            saved_name = files_saver.save_df2parquet(result, safe_name)
+            keywords_file_map.append((keyword, basename(saved_name)))
         except Exception as E:
             logging.error(type(E))
             logging.error(E)
-        # break
+        break
 
-    save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Filename')), 'keyword2file')
+    files_saver.save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Filename')), 'keyword2file')
 
 if __name__ == '__main__':
-    pipeline(tweets_no=10000)
+    # pipeline(tweets_no=10000)
+    pipeline()
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
