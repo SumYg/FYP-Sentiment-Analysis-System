@@ -18,7 +18,7 @@ class FilesSaver:
         makedirs(self.files_path)
 
     def save_df2parquet(self, df, filename, path=None):
-        save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.parquet.bz")
+        save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.parquet.br")
         df.to_parquet(save_path, compression='brotli')
         logging.info(f"Saved df to {save_path}")
         return save_path
