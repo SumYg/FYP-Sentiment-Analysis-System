@@ -61,7 +61,7 @@ class TwitterAPI:
         
         if tweets_no <= 100:
             logging.info("Request Twitter API")
-            tweets = get_tweets(query=keyword, tweet_fields=['created_at', 'public_metrics'], max_results=tweets_no)
+            tweets = get_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], max_results=tweets_no)
             logging.info("Request Twitter API Finished")
             for tweet in tweets.data:
                 parse_tweet(tweet)
@@ -75,7 +75,7 @@ class TwitterAPI:
                     end = tweets_no
                 current_no = end - start
 
-                tweets = get_tweets(query=keyword, tweet_fields=['created_at', 'public_metrics'], max_results=current_no, next_token=next_token)
+                tweets = get_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], max_results=current_no, next_token=next_token)
                 logging.info("Request Twitter API Finished")
                 for tweet in tweets.data:
                     parse_tweet(tweet)

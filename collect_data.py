@@ -28,31 +28,33 @@ def pipeline(tweets_no=100):
 
     files_saver = FilesSaver()
 
-    for _, keyword in google_trends.get_trending_searches().itertuples():
-        logging.info("Going to get "+keyword)
+    try:
+        for _, keyword in google_trends.get_trending_searches().itertuples():
+            logging.info("Going to get "+keyword)
 
-        # if keyword == 'Laver Cup':
-        #     skip = False
-        
-        # if skip:
-        #     continue
-        
-        # keyword = 'Hurricane tracker'
-        try:
+            # if keyword == 'Laver Cup':
+            #     skip = False
+            
+            # if skip:
+            #     continue
+            
+            # keyword = 'Hurricane tracker'
+            
             result = twitter_api.search_tweet_by_keyword(keyword, tweets_no=tweets_no)
             print(result)
             safe_name = sanitize_filepath(keyword)
-            if result.shape[0] < tweets_no:
+            result_no = result.shape[0]
+            if result_no < tweets_no:
                 logging.warning("Not enough tweets collected: "
-                            f"Expected {tweets_no} but got {result.shape[0]} tweets")
+                                f"Expected {tweets_no} but got {result_no} tweets")
             saved_name = files_saver.save_df2parquet(result, safe_name)
-            keywords_file_map.append((keyword, basename(saved_name)))
-        except Exception as E:
+            keywords_file_map.append((keyword, basename(saved_name), result_no))
+            break
+    except Exception as E:
             logging.error(type(E))
             logging.error(E)
-        break
 
-    files_saver.save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Filename')), 'keyword2file')
+    files_saver.save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Filename', 'Tweets Count')), 'keyword2file')
 
 if __name__ == '__main__':
     # pipeline(tweets_no=10000)

@@ -46,6 +46,6 @@ if __name__ == '__main__':
     # df = pd.DataFrame(data={'col1': [1, 2], 'col2': [3, 4]})
     # print(save_df2parquet(df, 'testing'))
 
-    # df = read_parquet(r'./data\testing.parquet.bz')
-    # print(df)
-    print(current_time_string())
+    df = read_parquet(r'./data\2022-09-25T11-46-32/Albert Pujols_2022-09-25T12-29-55.parquet.bz')
+    print(df)
+    # print(current_time_string())
