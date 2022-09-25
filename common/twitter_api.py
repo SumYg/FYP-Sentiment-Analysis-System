@@ -22,6 +22,12 @@ def retry_when_rate_limit_exceed(func):
                 trials += 1
                 logging.info(f"Too Many Requests, Retry after {retry_interval}s, current trial: {trials}")
                 sleep(retry_interval)
+            except Exception as E:
+                from collections import namedtuple
+                Empty = namedtuple('Empty', 'data')
+                logging.error(f"{type(E)}{E}\n"
+                                "End this keyword search")
+                return Empty([])
         raise
 
     return inner

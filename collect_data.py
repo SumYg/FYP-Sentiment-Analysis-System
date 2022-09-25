@@ -49,16 +49,16 @@ def pipeline(tweets_no=100):
                                 f"Expected {tweets_no} but got {result_no} tweets")
             saved_name = files_saver.save_df2parquet(result, safe_name)
             keywords_file_map.append((keyword, basename(saved_name), result_no))
-            break
+            # break
     except Exception as E:
-            logging.error(type(E))
-            logging.error(E)
+            logging.error(f"{type(E)}\n"
+                          f"{E}")
 
     files_saver.save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Filename', 'Tweets Count')), 'keyword2file')
 
 if __name__ == '__main__':
-    # pipeline(tweets_no=10000)
-    pipeline()
+    pipeline(tweets_no=15700)
+    # pipeline()
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
