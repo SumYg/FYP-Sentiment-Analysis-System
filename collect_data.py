@@ -23,6 +23,7 @@ def pipeline(tweets_no=100):
 
     keywords_file_map = []
 
+    exclude_set = {'China'}  # repeat in many region 
     # skip = True
     twitter_api = TwitterAPI()
 
@@ -30,15 +31,32 @@ def pipeline(tweets_no=100):
 
     try:
         for _, keyword in google_trends.get_trending_searches().itertuples():
+            if keyword in exclude_set:
+                continue
+
+            # related = google_trends.get_suggestions(keyword)
+            # logging.info(keyword)
+            # if related:
+            #     cont = True
+            #     logging.info(related)
+            #     for k in related:
+            #         title = k['title']
+            #         if title != keyword:
+            #             keyword = title
+            #             cont = False
+            #             break
+            #     if cont:
+            #         continue
+
+            # else:
+            #     continue
             logging.info("Going to get "+keyword)
 
-            # if keyword == 'Laver Cup':
+            # if keyword == 'María Eugenia Suárez':
             #     skip = False
             
             # if skip:
             #     continue
-            
-            # keyword = 'Hurricane tracker'
             
             result = twitter_api.search_tweet_by_keyword(keyword, tweets_no=tweets_no)
             print(result)
@@ -50,6 +68,7 @@ def pipeline(tweets_no=100):
             saved_name = files_saver.save_df2parquet(result, safe_name)
             keywords_file_map.append((keyword, basename(saved_name), result_no))
             # break
+            # return
     except Exception as E:
             logging.error(f"{type(E)}\n"
                           f"{E}")

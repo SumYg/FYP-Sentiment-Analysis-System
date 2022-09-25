@@ -21,7 +21,7 @@ class GoogleTrends():
     def __init__(self) -> None:
         self.pytrend = TrendReq(hl='en-US', tz=360)
 
-    def get_trending_searches(self, pn='united_states'):
+    def get_trending_searches(self, pn='australia'):
         """
         Return the dataframe which contains 20 trending searches.
         A bit different with the site

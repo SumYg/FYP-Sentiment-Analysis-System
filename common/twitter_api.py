@@ -22,12 +22,14 @@ def retry_when_rate_limit_exceed(func):
                 trials += 1
                 logging.info(f"Too Many Requests, Retry after {retry_interval}s, current trial: {trials}")
                 sleep(retry_interval)
+                retry_interval += 5
             except Exception as E:
-                from collections import namedtuple
-                Empty = namedtuple('Empty', 'data')
+                # from collections import namedtuple
+                # Empty = namedtuple('Empty', 'data', 'meta')
                 logging.error(f"{type(E)}{E}\n"
                                 "End this keyword search")
-                return Empty([])
+                # return Empty([], {})
+                return None
         raise
 
     return inner
@@ -83,12 +85,16 @@ class TwitterAPI:
 
                 tweets = get_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], max_results=current_no, next_token=next_token)
                 logging.info("Request Twitter API Finished")
-                for tweet in tweets.data:
-                    parse_tweet(tweet)
-                if 'next_token' not in tweets.meta:
-                    logging.warning(f"Don't have next token for keyword: {keyword}")
+                if tweets and tweets.data:
+                    for tweet in tweets.data:
+                        parse_tweet(tweet)
+                    if 'next_token' not in tweets.meta:
+                        logging.warning(f"Don't have next token for keyword: {keyword}")
+                        break
+                    next_token = tweets.meta['next_token']
+                else:
+                    logging.warning(f"Early Break: {keyword}")
                     break
-                next_token = tweets.meta['next_token']
             # print("--------")
             
             # print(tweet.id)
