@@ -23,6 +23,7 @@ def pipeline(tweets_no):
     keywords_file_map = []
 
     # skip = True
+    twitter_api = TwitterAPI()
 
     for _, keyword in google_trends.get_trending_searches().itertuples():
         logging.info("Going to get "+keyword)
@@ -35,7 +36,6 @@ def pipeline(tweets_no):
         
         # keyword = 'Hurricane tracker'
         try:
-            twitter_api = TwitterAPI()
             result = twitter_api.search_tweet_by_keyword(keyword, tweets_no=tweets_no)
             print(result)
             safe_name = sanitize_filepath(keyword)
@@ -43,14 +43,15 @@ def pipeline(tweets_no):
             keywords_file_map.append((keyword, save_path))
         except Exception as E:
             logging.error(E)
+        break
 
     save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Filename')), 'keyword2file')
 
 if __name__ == '__main__':
-    # pipeline(tweets_no=1000)
+    # pipeline(tweets_no=10000)
 
     logging.info("Load parquet from disk")
-    df = read_parquet('./data\China_2022-09-25T03-08-42.parquet.bz')
+    df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
     print(df)
 
     # print("Read from local")

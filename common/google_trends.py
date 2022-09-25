@@ -49,4 +49,4 @@ class GoogleTrends():
 if __name__ == '__main__':
     google_trends = GoogleTrends()
     # google_trends.get_suggestions("Alex")
-    google_trends.get_trending_searches()
+    print(google_trends.get_trending_searches())
