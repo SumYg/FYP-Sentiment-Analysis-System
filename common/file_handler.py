@@ -24,7 +24,8 @@ class FilesSaver:
         return save_path
 
     def save2csv(self, df, filename, path=None):
-        save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.csv")
+        save_path = join_paths(path if path else self.files_path, f"{filename}.csv")
+        # save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.csv")
         df.to_csv(save_path, index=False)
 
 def read_parquet(path):
