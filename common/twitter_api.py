@@ -1,7 +1,31 @@
 import tweepy
+from tweepy.errors import TooManyRequests
 from pprint import pprint
 import pandas as pd
 import logging
+from time import sleep
+
+def retry_when_rate_limit_exceed(func):
+    def inner(*args, **kwargs):
+        retry_interval = 100
+        max_trials = 1000  # avoid infinite loop
+        trials = 0
+        while trials < max_trials:
+            try:
+                return func(*args, **kwargs)
+            except TooManyRequests:
+                """
+                May examine the HTTP header for more precise sleep time
+                Recovering from a rate limit
+                https://developer.twitter.com/en/docs/twitter-api/rate-limits
+                """
+                trials += 1
+                logging.info(f"Too Many Requests, Retry after {retry_interval}s, current trial: {trials}")
+                sleep(retry_interval)
+        raise
+
+    return inner
+    
 
 class TwitterAPI:
     def __init__(self) -> None:
@@ -16,11 +40,17 @@ class TwitterAPI:
         # for tweet in public_tweets:
         #     print(tweet.text)
 
+    # @retry_when_rate_limit_exceed
     def search_tweet_by_keyword(self, keyword, tweets_no=100):
 
         def parse_tweet(tweet):
             pm = tweet.public_metrics
             data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count']))
+
+        @retry_when_rate_limit_exceed
+        def get_tweets(*args, **kwargs):
+            return self.client.search_recent_tweets(*args, **kwargs)
+            
         """
         Ref: https://dev.to/twitterdev/a-comprehensive-guide-for-using-the-twitter-api-v2-using-tweepy-in-python-15d9
         https://developer.twitter.com/en/docs/twitter-api/fields
@@ -31,7 +61,7 @@ class TwitterAPI:
         
         if tweets_no <= 100:
             logging.info("Request Twitter API")
-            tweets = self.client.search_recent_tweets(query=keyword, tweet_fields=['created_at', 'public_metrics'], max_results=tweets_no)
+            tweets = get_tweets(query=keyword, tweet_fields=['created_at', 'public_metrics'], max_results=tweets_no)
             logging.info("Request Twitter API Finished")
             for tweet in tweets.data:
                 parse_tweet(tweet)
@@ -45,12 +75,12 @@ class TwitterAPI:
                     end = tweets_no
                 current_no = end - start
 
-                tweets = self.client.search_recent_tweets(query=keyword, tweet_fields=['created_at', 'public_metrics'], max_results=current_no, next_token=next_token)
+                tweets = get_tweets(query=keyword, tweet_fields=['created_at', 'public_metrics'], max_results=current_no, next_token=next_token)
                 logging.info("Request Twitter API Finished")
                 for tweet in tweets.data:
                     parse_tweet(tweet)
                 if 'next_token' not in tweets.meta:
-                    logging.warn(f"Don't have next token for keyword: {keyword}")
+                    logging.warning(f"Don't have next token for keyword: {keyword}")
                     break
                 next_token = tweets.meta['next_token']
             # print("--------")
