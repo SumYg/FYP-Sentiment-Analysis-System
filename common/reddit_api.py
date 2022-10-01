@@ -3,6 +3,7 @@ import praw
 # import pprint
 from datetime import datetime
 import pandas as pd
+import logging
 
 class RedditAPI:
     def __init__(self) -> None:
@@ -23,34 +24,36 @@ class RedditAPI:
             self.comments = []
             self.comment_columns = ('parent_id', 'comment_id', 'body', 'created_at_utc', 'score', 'ups', 'downs', 'stickied', 'depth')
 
-        def get_first_level_comments(self, submission):
+        def get_all_comments(self, submission):
             # iterate through comments from submission
             # url = "https://www.reddit.com/r/funny/comments/3g1jfi/buttons/"
             # submission = self.reddit.submission(url=url)
             submission.comments.replace_more(limit=0)  # get only first round of comments
-            print('/')
-            counter = 0
-            submission_id = submission
+            # counter = 0
+            submission_id = submission.id
             # for top_level_comment in submission.comments:
             for top_level_comment in submission.comments.list():
                 # if isinstance(top_level_comment, MoreComments):
-                #     print("!!!!!!!!!!!!!!")
                 #     continue
                 # print(top_level_comment.body)
                 # pprint.pprint(vars(top_level_comment))
                 self.comments.append((submission_id, top_level_comment.id, top_level_comment.body, datetime.utcfromtimestamp(top_level_comment.created_utc)
                     , top_level_comment.score, top_level_comment.ups, top_level_comment.downs, top_level_comment.stickied, top_level_comment.depth))
-                counter += 1
+                # counter += 1
                 # break
-            print(counter)
+            # print(counter)
 
-    def search_keyword(self, keyword, limit=3, time_filter='day'):
+    def search_keyword(self, keyword, limit=1000, time_filter='day'):
+        """
+        Return (Submissions DataFrame, Comments DataFrame)
+        """
         data = []
         columns = ('reddit_id', 'title', 'text', 'created_at_utc', 'comment_count', 'score', 'ups', 'downs', 'spoiler', 'stickied', 'upvote_ratio',
                     'is_original_content', 'is_self')
 
         comments = self.Comments()
 
+        logging.info("Request Reddit API")
         for submission in self.all.search(keyword, limit=limit, time_filter=time_filter):
             # print(type(submission), submission)
             # print(submission.id)
@@ -63,9 +66,12 @@ class RedditAPI:
             data.append((submission.id, submission.title, submission.selftext, datetime.utcfromtimestamp(submission.created_utc)
                 , submission.num_comments, submission.score, submission.ups, submission.downs, submission.spoiler, submission.stickied, submission.upvote_ratio
                 ,submission.is_original_content, submission.is_self))
-            print("Getting Comments")
-            comments.get_first_level_comments(submission)
+            logging.info("Start to get Comments")
+            comments.get_all_comments(submission)
+            logging.info("Got all Comments")
             # break
+        logging.info("Request Reddit API Finished")
+        
         return pd.DataFrame(data=data, columns=columns), pd.DataFrame(data=comments.comments, columns=comments.comment_columns)
 
 if __name__ == '__main__':
