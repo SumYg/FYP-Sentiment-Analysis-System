@@ -1,4 +1,4 @@
-from operator import index
+from pathvalidate import sanitize_filepath
 from os import makedirs
 from os.path import join as join_paths
 import pandas as pd
@@ -17,13 +17,17 @@ class FilesSaver:
         self.files_path = join_paths(ROOT_PATH, current_time_string())
         makedirs(self.files_path)
 
-    def save_df2parquet(self, df, filename, path=None):
+    def save_df2parquet(self, df, filename, path=None, check_name=True):
+        if check_name:
+            filename = sanitize_filepath(filename)
         save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.parquet.br")
         df.to_parquet(save_path, compression='brotli')
         logging.info(f"Saved df to {save_path}")
         return save_path
 
-    def save2csv(self, df, filename, path=None):
+    def save2csv(self, df, filename, path=None, check_name=True):
+        if check_name:
+            filename = sanitize_filepath(filename)
         save_path = join_paths(path if path else self.files_path, f"{filename}.csv")
         # save_path = join_paths(path if path else self.files_path, f"{filename}_{current_time_string()}.csv")
         df.to_csv(save_path, index=False)

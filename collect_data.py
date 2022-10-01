@@ -5,7 +5,6 @@ import logging
 import sys
 from os import makedirs
 from os.path import basename
-from pathvalidate import sanitize_filepath
 import pandas as pd
 
 makedirs('./log', exist_ok=True)
@@ -60,12 +59,11 @@ def pipeline(tweets_no=100):
             
             result = twitter_api.search_tweet_by_keyword(keyword, tweets_no=tweets_no)
             print(result)
-            safe_name = sanitize_filepath(keyword)
             result_no = result.shape[0]
             if result_no < tweets_no:
                 logging.warning("Not enough tweets collected: "
                                 f"Expected {tweets_no} but got {result_no} tweets")
-            saved_name = files_saver.save_df2parquet(result, safe_name)
+            saved_name = files_saver.save_df2parquet(result, keyword)
             keywords_file_map.append((keyword, basename(saved_name), result_no))
             # break
             # return
