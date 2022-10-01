@@ -50,14 +50,16 @@ class TwitterAPI:
 
     # @retry_when_rate_limit_exceed
     def search_tweet_by_keyword(self, keyword, tweets_no=100):
-
+        """
+        TODO: Limit start time of tweet, save if a tweet is replying others' tweet
+        """
         def parse_tweet(tweet):
             pm = tweet.public_metrics
             data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count']))
 
         @retry_when_rate_limit_exceed
-        def get_tweets(*args, **kwargs):
-            return self.client.search_recent_tweets(*args, **kwargs)
+        def get_tweets(keyword, *args, **kwargs):
+            return self.client.search_recent_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], *args, **kwargs)
             
         """
         Ref: https://dev.to/twitterdev/a-comprehensive-guide-for-using-the-twitter-api-v2-using-tweepy-in-python-15d9
@@ -69,7 +71,7 @@ class TwitterAPI:
         
         if tweets_no <= 100:
             logging.info("Request Twitter API")
-            tweets = get_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], max_results=tweets_no)
+            tweets = get_tweets(keyword, max_results=tweets_no)
             logging.info("Request Twitter API Finished")
             for tweet in tweets.data:
                 parse_tweet(tweet)
@@ -83,7 +85,7 @@ class TwitterAPI:
                     end = tweets_no
                 current_no = end - start
 
-                tweets = get_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], max_results=current_no, next_token=next_token)
+                tweets = get_tweets(keyword, max_results=current_no, next_token=next_token)
                 logging.info("Request Twitter API Finished")
                 if tweets and tweets.data:
                     for tweet in tweets.data:
