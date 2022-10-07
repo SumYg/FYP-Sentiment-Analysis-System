@@ -7,6 +7,7 @@ import sys
 from os import makedirs
 from os.path import basename
 import pandas as pd
+from traceback import format_exc
 
 makedirs('./log', exist_ok=True)
 logging.basicConfig(
@@ -23,7 +24,7 @@ def pipeline(tweets_no=1000):
 
     keywords_file_map = []
 
-    exclude_set = {'China'}  # repeat in many region 
+    exclude_set = {'Broncos', 'Mario Movie', 'Omonia vs Man United', 'Pixel 7', 'Thailand'}
     # skip = True
     twitter_api = TwitterAPI()
     reddit_api = RedditAPI()
@@ -80,7 +81,7 @@ def pipeline(tweets_no=1000):
             # return
     except Exception as E:
             logging.error(f"{type(E)}\n"
-                          f"{E}")
+                          f"{format_exc()}")
 
     files_saver.save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Twitter File', 'Tweets Count'
                                                                         , 'Reddit Submissions File', 'Reddit Submissions Count'
