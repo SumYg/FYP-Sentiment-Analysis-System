@@ -89,7 +89,7 @@ def pipeline(tweets_no=1000):
 
 if __name__ == '__main__':
     # pipeline(tweets_no=15700)
-    pipeline()
+    pipeline(3000)
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
