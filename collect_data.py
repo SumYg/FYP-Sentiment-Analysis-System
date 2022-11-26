@@ -19,19 +19,32 @@ logging.basicConfig(
     ]
 )
 
-def pipeline(tweets_no=1000):
+def pipeline(target_tweets_no=1000):
     google_trends = GoogleTrends()
 
     keywords_file_map = []
 
-    exclude_set = {'Broncos', 'Mario Movie', 'Omonia vs Man United', 'Pixel 7', 'Thailand'}
+    exclude_set = {}
+    # exclude_set = {'Broncos', 'Mario Movie', 'Omonia vs Man United', 'Pixel 7', 'Thailand'}
     # skip = True
     twitter_api = TwitterAPI()
     reddit_api = RedditAPI()
     files_saver = FilesSaver()
 
+    google_trends_keywords = google_trends.get_trending_searches()
+
+    keywords_no = google_trends_keywords.shape[0]
+
+    logging.info(f"Target Number of Tweets: {target_tweets_no}")
+    avg_tweets_no = target_tweets_no // keywords_no
+    logging.info(f"Average Number of Tweets per keyword: {avg_tweets_no}")
+    assert avg_tweets_no >= 10  # at least 10 tweets in each API call
+
+    keywords_no += 1
+
     try:
-        for _, keyword in google_trends.get_trending_searches().itertuples():
+        for _, keyword in google_trends_keywords[::-1].itertuples():
+            keywords_no -= 1
             if keyword in exclude_set:
                 continue
             # related = google_trends.get_suggestions(keyword)
@@ -50,12 +63,9 @@ def pipeline(tweets_no=1000):
 
             # else:
             #     continue
+            tweets_no = target_tweets_no// keywords_no
+
             logging.info("Going to get "+keyword)
-            # if keyword == 'María Eugenia Suárez':
-            #     skip = False
-            
-            # if skip:
-            #     continue
 
             reddit_submissions, reddit_comments = reddit_api.search_keyword(keyword)
             reddit_submissions_no, reddit_comments_no = reddit_submissions.shape[0], reddit_comments.shape[0]
@@ -70,6 +80,7 @@ def pipeline(tweets_no=1000):
             if result_no < tweets_no:
                 logging.warning("Not enough tweets collected: "
                                 f"Expected {tweets_no} but got {result_no} tweets")
+            target_tweets_no -= result_no
             
             twitter_file_saved_name = files_saver.save_df2parquet(result, f"{keyword}_twitter")
 
@@ -83,13 +94,12 @@ def pipeline(tweets_no=1000):
             logging.error(f"{type(E)}\n"
                           f"{format_exc()}")
 
-    files_saver.save2csv(pd.DataFrame(data=keywords_file_map, columns=('Keyword', 'Twitter File', 'Tweets Count'
+    files_saver.save2csv(pd.DataFrame(data=reversed(keywords_file_map), columns=('Keyword', 'Twitter File', 'Tweets Count'
                                                                         , 'Reddit Submissions File', 'Reddit Submissions Count'
                                                                         , 'Reddit Comments File', 'Reddit Comments Count')), 'keyword2file')
 
 if __name__ == '__main__':
-    # pipeline(tweets_no=15700)
-    pipeline(3000)
+    pipeline(16666)
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
