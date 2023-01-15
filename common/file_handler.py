@@ -4,6 +4,7 @@ from os.path import join as join_paths
 import pandas as pd
 import datetime
 import logging
+import pickle
 
 ROOT_PATH = './data'
 
@@ -37,9 +38,13 @@ def read_parquet(path):
     logging.info(f"Read df from {path}")
     return pd.read_parquet(path)
 
-
-
-
+def save2pickle(obj, file_path):
+    with open(file_path, 'wb') as f:
+        pickle.dump(obj, f)
+        
+def load_pickle(file_path):
+    with open(file_path, 'rb') as f:
+        return pickle.load(f)
 
 # split parquet by size
 # https://stackoverflow.com/questions/59887234/split-a-parquet-file-in-smaller-chunks-using-dask
