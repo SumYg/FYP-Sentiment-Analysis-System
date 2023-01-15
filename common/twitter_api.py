@@ -8,7 +8,7 @@ from time import sleep
 def retry_when_rate_limit_exceed(func):
     def inner(*args, **kwargs):
         retry_interval = 100
-        max_trials = 1000  # avoid infinite loop
+        max_trials = 11  # avoid infinite loop
         trials = 0
         while trials < max_trials:
             try:
@@ -39,7 +39,7 @@ class TwitterAPI:
     def __init__(self) -> None:
         with open('./cred/twitter.txt', 'r') as f:
             bearer_token = f.read()
-        print(f"Token: {bearer_token}")
+        # print(f"Token: {bearer_token}")
         self.client = tweepy.Client(bearer_token=bearer_token)
         # client.get_bookmarks()
         # auth = tweepy.OAuth2BearerHandler(bearer_token)  # App only
