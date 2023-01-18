@@ -55,7 +55,7 @@ class TwitterAPI:
         """
         def parse_tweet(tweet):
             pm = tweet.public_metrics
-            data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count']))
+            data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count'], tweet.conversation_id, tweet.conversation_id == tweet.id))
 
         @retry_when_rate_limit_exceed
         def get_tweets(keyword, *args, **kwargs):
@@ -67,7 +67,7 @@ class TwitterAPI:
         """
         # return self.client.search_recent_tweets(query=keyword, tweet_fields=['context_annotations', 'created_at', 'public_metrics'], max_results=100)
         data = []
-        columns = ('tweet_id', 'text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count')
+        columns = ('tweet_id', 'text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count', 'conversation_id', 'is_top_layer_tweet')
         
         if tweets_no <= 100:
             logging.info("Request Twitter API")
