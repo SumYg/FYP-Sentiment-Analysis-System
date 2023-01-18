@@ -4,6 +4,7 @@ from pprint import pprint
 import pandas as pd
 import logging
 from time import sleep
+from datetime import date, timedelta
 
 def retry_when_rate_limit_exceed(func):
     def inner(*args, **kwargs):
@@ -50,16 +51,13 @@ class TwitterAPI:
 
     # @retry_when_rate_limit_exceed
     def search_tweet_by_keyword(self, keyword, tweets_no=100):
-        """
-        TODO: Limit start time of tweet, save if a tweet is replying others' tweet
-        """
         def parse_tweet(tweet):
             pm = tweet.public_metrics
             data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count'], tweet.conversation_id, tweet.conversation_id == tweet.id))
 
         @retry_when_rate_limit_exceed
         def get_tweets(keyword, *args, **kwargs):
-            return self.client.search_recent_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], *args, **kwargs)
+            return self.client.search_recent_tweets(query=f"{keyword} since:{date.today() - timedelta(days=1)} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], *args, **kwargs)
             
         """
         Ref: https://dev.to/twitterdev/a-comprehensive-guide-for-using-the-twitter-api-v2-using-tweepy-in-python-15d9
