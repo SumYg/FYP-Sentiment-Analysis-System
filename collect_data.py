@@ -1,5 +1,6 @@
 from common.file_handler import read_parquet, current_time_string, FilesSaver
-from common.twitter_api import TwitterAPI
+# from common.twitter_api import TwitterAPI
+from common.twitter_api import sn_search_within_day
 from common.reddit_api import RedditAPI
 from common.google_trends import GoogleTrends
 import logging
@@ -27,7 +28,7 @@ def pipeline(target_tweets_no=1000):
     exclude_set = {}
     # exclude_set = {'Broncos', 'Mario Movie', 'Omonia vs Man United', 'Pixel 7', 'Thailand'}
     # skip = True
-    twitter_api = TwitterAPI()
+    # twitter_api = TwitterAPI()
     reddit_api = RedditAPI()
     files_saver = FilesSaver()
 
@@ -38,7 +39,7 @@ def pipeline(target_tweets_no=1000):
     logging.info(f"Target Number of Tweets: {target_tweets_no}")
     avg_tweets_no = target_tweets_no // keywords_no
     logging.info(f"Average Number of Tweets per keyword: {avg_tweets_no}")
-    assert avg_tweets_no >= 10  # at least 10 tweets in each API call
+    assert avg_tweets_no >= 10, "At least 10 tweets in each API call"
 
     keywords_no += 1
 
@@ -74,7 +75,7 @@ def pipeline(target_tweets_no=1000):
             reddit_submissions_saved_name = files_saver.save_df2parquet(reddit_submissions, f"{keyword}_reddit_submissions")
             reddit_comments_saved_name = files_saver.save_df2parquet(reddit_comments, f"{keyword}_reddit_comments")
 
-            result = twitter_api.search_tweet_by_keyword(keyword, tweets_no=tweets_no)
+            result = sn_search_within_day(keyword, tweets_no=tweets_no)
             # print(result)
             result_no = result.shape[0]
             if result_no < tweets_no:
@@ -99,7 +100,7 @@ def pipeline(target_tweets_no=1000):
                                                                         , 'Reddit Comments File', 'Reddit Comments Count')), 'keyword2file')
 
 if __name__ == '__main__':
-    pipeline(16666)
+    pipeline(100000)
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
