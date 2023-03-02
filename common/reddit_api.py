@@ -42,6 +42,11 @@ class RedditAPI:
                 # counter += 1
                 # break
             # print(counter)
+        
+        @property
+        def length(self):
+            return len(self.comments)
+            
 
     def search_keyword(self, keyword, limit=1000, time_filter='day'):
         """
@@ -68,7 +73,7 @@ class RedditAPI:
                 ,submission.is_original_content, submission.is_self))
             logging.info("Start to get Comments")
             comments.get_all_comments(submission)
-            logging.info("Got all Comments")
+            logging.info(f"Got all Comments, stored {comments.length}")
             # break
         logging.info("Request Reddit API Finished")
         

@@ -1,9 +1,13 @@
 import tweepy
+import snscrape.modules.twitter as sntwitter
 from tweepy.errors import TooManyRequests
 from pprint import pprint
 import pandas as pd
 import logging
 from time import sleep
+from datetime import date, timedelta
+
+MAX_NUMBER_OF_TWEETS_PER_FILE = 100000
 
 def retry_when_rate_limit_exceed(func):
     def inner(*args, **kwargs):
@@ -49,17 +53,14 @@ class TwitterAPI:
         #     print(tweet.text)
 
     # @retry_when_rate_limit_exceed
-    def search_tweet_by_keyword(self, keyword, tweets_no=100):
-        """
-        TODO: Limit start time of tweet, save if a tweet is replying others' tweet
-        """
+    def search_tweet_by_keyword(self, keyword, tweets_no=100, skip=False):
         def parse_tweet(tweet):
             pm = tweet.public_metrics
-            data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count']))
+            data.append((tweet.id, tweet.text, tweet.created_at, pm['retweet_count'], pm['reply_count'], pm['like_count'], pm['quote_count'], tweet.conversation_id, tweet.conversation_id == tweet.id))
 
         @retry_when_rate_limit_exceed
         def get_tweets(keyword, *args, **kwargs):
-            return self.client.search_recent_tweets(query=f"{keyword} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], *args, **kwargs)
+            return self.client.search_recent_tweets(query=f"{keyword} since:{date.today() - timedelta(days=1)} -is:retweet lang:en", tweet_fields=['created_at', 'public_metrics'], *args, **kwargs)
             
         """
         Ref: https://dev.to/twitterdev/a-comprehensive-guide-for-using-the-twitter-api-v2-using-tweepy-in-python-15d9
@@ -67,9 +68,11 @@ class TwitterAPI:
         """
         # return self.client.search_recent_tweets(query=keyword, tweet_fields=['context_annotations', 'created_at', 'public_metrics'], max_results=100)
         data = []
-        columns = ('tweet_id', 'text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count')
+        columns = ('tweet_id', 'text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count', 'conversation_id', 'is_top_layer_tweet')
         
-        if tweets_no <= 100:
+        if skip:
+            pass
+        elif tweets_no <= 100:
             logging.info("Request Twitter API")
             tweets = get_tweets(keyword, max_results=tweets_no)
             logging.info("Request Twitter API Finished")
@@ -130,8 +133,23 @@ class TwitterAPI:
         # """
         return pd.DataFrame(data=data, columns=columns)
 
+def sn_search_within_day(keyword, tweets_no=100, skip=False):
+    "Roughly within 1 day, Not Threadsafe"
+    data = []
+    columns = ('tweet_id', 'text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count', 'conversation_id', 'is_top_layer_tweet')
+
+    if not skip:
+        for i,tweet in enumerate(sntwitter.TwitterSearchScraper(f'{keyword} since:{date.today() - timedelta(days=1)} -is:retweet lang:en').get_items()): #declare a username 
+            if i >= tweets_no or i >= MAX_NUMBER_OF_TWEETS_PER_FILE: #number of tweets you want to scrape
+                break
+            # tweets_list4.append([tweet.date, tweet.id, tweet.rawContent, tweet.renderedContent, tweet.user.username]) #declare the attributes to be returned
+            data.append([tweet.id, tweet.rawContent, tweet.date, tweet.retweetCount, tweet.replyCount, tweet.likeCount, tweet.quoteCount, tweet.conversationId, tweet.conversationId == tweet.id]) #declare the attributes to be returned
+        
+    return pd.DataFrame(data, columns=columns)
+
 
 if __name__ == '__main__':
-    twitter_api = TwitterAPI()
-    result = twitter_api.search_tweet_by_keyword('Hurricane tracker')
-    print(result)
+    # twitter_api = TwitterAPI()
+    # result = twitter_api.search_tweet_by_keyword('Hurricane tracker')
+    # print(result)
+    print(sn_search_within_day('dream speech'))
