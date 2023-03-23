@@ -11,8 +11,8 @@ from collections import OrderedDict, defaultdict
 
 from setup import load
 load()
-# from ptb import PTB
-from input_dataset import InputDataset
+from ptb import PTB
+# from input_dataset import InputDataset
 from utils import to_var, idx2word, expierment_name
 from model import VAEDecoder, VAEEncoder
 from torch import nn
@@ -54,13 +54,13 @@ def main(args):
     st_time = time.time()
 
     # splits = ['train', 'valid'] + (['test'] if args.test else [])
-    splits = ['train']
+    splits = ['train', 'valid']
 
     datasets = OrderedDict()
     for split in splits:
-        datasets[split] = InputDataset(
+        datasets[split] = PTB(
             data_dir=args.data_dir,
-            raw_data_filename='sentence_split_9999_skip_first_100.pickle',
+            # raw_data_filename='sentence_split_30000_skip_first_0',
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
@@ -83,9 +83,9 @@ def main(args):
         num_layers=args.num_layers,
         bidirectional=args.bidirectional
     )
-    eos_idx=datasets['train'].eos_idx
+    sos_idx = datasets['train'].sos_idx  # eos_idx = datasets['train'].eos_idx
     encoder = VAEEncoder(**params)
-    decoder = VAEDecoder(**params)
+    decoder = VAEDecoder(**params, embedding=encoder.embedding)
 
     teacher_forcing_ratio = args.teacher_forcing
     
@@ -156,8 +156,8 @@ def main(args):
 
         return nll_loss, KL_loss, KL_weight
 
-    encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate, weight_decay=1e-3)
-    decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate, weight_decay=1e-3)
+    encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate) #, weight_decay=1e-3)
+    decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate) #, weight_decay=3e-3)
 
     tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
     step = 0
@@ -166,7 +166,7 @@ def main(args):
 
     x0 = total_steps/ 2
     # replaced args.x0 with x0
-    min_kl_loss = 20
+    # min_kl_loss = 20
 
     for epoch in range(args.epochs):
 
@@ -202,12 +202,13 @@ def main(args):
                         batch[k] = to_var(v)
 
                 # Forward pass
-                batch_size, sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths = encoder(batch['input'], batch['length'])
+                # batch_size, sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths = encoder(batch['input'], batch['length'])  # use different embedding
+                batch_size, sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = encoder(batch['input'], batch['length'])
                 use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
                 # use_teacher_forcing = True
                 # print(use_teacher_forcing)
                 if use_teacher_forcing:
-                    params = batch['input'], batch['length'], sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths
+                    params = batch['input'], batch['length'], sorted_idx, mean, logv, z, reversed_idx, sorted_lengths
                     logp, _ = decoder(use_teacher_forcing, params)
                     # print("logp shape", logp.shape)
                     # print("batch target shape", batch['target'].shape)
@@ -219,16 +220,16 @@ def main(args):
                     # print("logp shape", logp.shape)
                     nll_loss = NLL(logp, target)
                 else:
-                    input_sequence = to_var(torch.Tensor(batch_size).fill_(eos_idx).long())
+                    input_sequence = to_var(torch.Tensor(batch_size).fill_(sos_idx).long())  # newly change from eos to sos
                     params = input_sequence, z, True
                     nll_loss = 0
-                    target_tensor = batch['target']
+                    target_tensor = batch['target'][sorted_idx]
                     # print(batch['length'])
                     
                     # ended_sequence_indices_set = set()
                     # running_indices = torch.arange(batch_size)
 
-                    hidden = None
+                    # hidden = None
                     # print("EOS index", eos_idx)
                     # print(datasets['train'].pad_idx)
                     # print(batch['target'])
@@ -236,8 +237,16 @@ def main(args):
                     for di in range(max(batch['length'])):
                         logp, hidden = decoder(use_teacher_forcing, params)
                         # decoder_output, decoder_hidden = decoder(use_teacher_forcing, params)
-                        topv, topi = logp.topk(1)
-                        decoder_input = topi.squeeze().detach()  # detach from history as input
+
+                        # # select top 1 word from output
+                        # topv, topi = logp.topk(1)
+                        # decoder_input = topi.squeeze()  # detach from history as input
+
+                        # sample output
+                        probs = logp.exp().squeeze()
+                        m = torch.distributions.Categorical(probs)
+                        decoder_input = m.sample()
+
                         # print(8, target_tensor[:, di].shape, target_tensor[:, di])
                         # print(8, target_tensor[:, di].shape)
                         # print(9, target_tensor.shape)
@@ -246,6 +255,7 @@ def main(args):
                         # print("criterion(logp, target_tensor[di])", local_loss.shape)
                         # print(local_loss)
                         # 1/0
+                        # print(reversed_idx.shape, logp.shape)
                         nll_loss += NLL(logp, target_tensor[:, di])
                         
                         # for seq_index, decoder_next_input in enumerate(decoder_input):
@@ -259,9 +269,10 @@ def main(args):
 
                 # loss calculation
                 NLL_loss, KL_loss, KL_weight = loss_fn(nll_loss,
-                    batch['length'], mean, logv, args.anneal_function, step, args.k, x0)
+                    batch['length'], mean, logv, args.anneal_function, step, args.k, args.x0)  # original x0
 
-                loss = (NLL_loss + max(min_kl_loss, KL_weight * KL_loss)) / batch_size
+                loss = (NLL_loss + KL_weight * KL_loss) / batch_size
+                # loss = (NLL_loss + max(min_kl_loss, KL_weight * KL_loss)) / batch_size
                 # print(loss)
                 # 0/0
                 # backward + optimization
@@ -290,12 +301,12 @@ def main(args):
                           % (split.upper(), iteration, len(data_loader)-1, loss.item(), NLL_loss.item()/batch_size,
                           KL_loss.item()/batch_size, KL_weight))
 
-                if split == 'valid':
-                    if 'target_sents' not in tracker:
-                        tracker['target_sents'] = list()
-                    tracker['target_sents'] += idx2word(batch['target'].data, i2w=datasets['train'].get_i2w(),
-                                                        pad_idx=datasets['train'].pad_idx)
-                    tracker['z'] = torch.cat((tracker['z'], z.data), dim=0)
+                # if split == 'valid':
+                #     if 'target_sents' not in tracker:
+                #         tracker['target_sents'] = list()
+                #     tracker['target_sents'] += idx2word(batch['target'].data, i2w=datasets['train'].get_i2w(),
+                #                                         pad_idx=datasets['train'].pad_idx)
+                #     tracker['z'] = torch.cat((tracker['z'], z.data), dim=0)
 
             print("%s Epoch %02d/%i, Mean ELBO %9.4f" % (split.upper(), epoch, args.epochs, tracker['ELBO'].mean()))
             print(f"Elapsed Time: {time.time() - st_time}s")
@@ -303,16 +314,16 @@ def main(args):
             if args.tensorboard_logging:
                 writer.add_scalar("%s-Epoch/ELBO" % split.upper(), torch.mean(tracker['ELBO']), epoch)
 
-            # save a dump of all sentences and the encoded latent space
-            if split == 'valid':
-                dump = {'target_sents': tracker['target_sents'], 'z': tracker['z'].tolist()}
-                if not os.path.exists(os.path.join('dumps', ts)):
-                    os.makedirs('dumps/'+ts)
-                with open(os.path.join('dumps/'+ts+'/valid_E%i.json' % epoch), 'w') as dump_file:
-                    json.dump(dump,dump_file)
+            # # save a dump of all sentences and the encoded latent space
+            # if split == 'valid':
+            #     dump = {'target_sents': tracker['target_sents'], 'z': tracker['z'].tolist()}
+            #     if not os.path.exists(os.path.join('dumps', ts)):
+            #         os.makedirs('dumps/'+ts)
+            #     with open(os.path.join('dumps/'+ts+'/valid_E%i.json' % epoch), 'w') as dump_file:
+            #         json.dump(dump,dump_file)
 
             # save checkpoint
-            if split == 'train' and (epoch == args.epochs - 1 or epoch% 50 == 49):
+            if split == 'train' and (epoch == args.epochs - 1 or epoch% args.save_every == (args.save_every - 1)):
                 checkpoint_path = os.path.join(save_model_path, "E%i.pytorch" % epoch)
                 torch.save({
                     'encoder_state_dict': encoder.state_dict(),
@@ -328,7 +339,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--data_dir', type=str, default='dataset')
     parser.add_argument('--create_data', action='store_true')
-    parser.add_argument('--max_sequence_length', type=int, default=100)
+    parser.add_argument('--max_sequence_length', type=int, default=60)
     parser.add_argument('--min_occ', type=int, default=1)
     parser.add_argument('--test', action='store_true')
 
@@ -342,8 +353,8 @@ if __name__ == '__main__':
     parser.add_argument('-nl', '--num_layers', type=int, default=1)
     parser.add_argument('-bi', '--bidirectional', action='store_true')
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
-    parser.add_argument('-wd', '--word_dropout', type=float, default=0)
-    parser.add_argument('-tf', '--teacher_forcing', type=float, default=0.5)
+    parser.add_argument('-wd', '--word_dropout', type=float, default=0.62)
+    parser.add_argument('-tf', '--teacher_forcing', type=float, default=0.8)
     parser.add_argument('-ed', '--embedding_dropout', type=float, default=0.5)
 
     parser.add_argument('-af', '--anneal_function', type=str, default='logistic')
@@ -354,6 +365,9 @@ if __name__ == '__main__':
     parser.add_argument('-tb', '--tensorboard_logging', action='store_true')
     parser.add_argument('-log', '--logdir', type=str, default='logs')
     parser.add_argument('-bin', '--save_model_path', type=str, default='bin')
+
+    parser.add_argument('-se', '--save_every', type=int, default=20)
+
 
     args = parser.parse_args()
 
