@@ -11,10 +11,11 @@ from collections import OrderedDict, defaultdict
 
 from setup import load
 load()
-from ptb import PTB
-# from input_dataset import InputDataset
+# from ptb import PTB
+from input_dataset import InputDataset
 from utils import to_var, idx2word, expierment_name
 from model import VAEDecoder, VAEEncoder
+# from model2 import VAEDecoder, VAEEncoder
 from torch import nn
 import random
 from math import ceil
@@ -58,9 +59,10 @@ def main(args):
 
     datasets = OrderedDict()
     for split in splits:
-        datasets[split] = PTB(
+        datasets[split] = InputDataset(
             data_dir=args.data_dir,
-            # raw_data_filename='sentence_split_30000_skip_first_0',
+            # raw_data_filename='sentence_split_full_7061004_skip_first_0',
+            raw_data_filename='sentence_split_30000_skip_first_0',
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
@@ -85,6 +87,7 @@ def main(args):
     )
     sos_idx = datasets['train'].sos_idx  # eos_idx = datasets['train'].eos_idx
     encoder = VAEEncoder(**params)
+    # decoder = VAEDecoder(**params, bert=encoder.bert)
     decoder = VAEDecoder(**params, embedding=encoder.embedding)
 
     teacher_forcing_ratio = args.teacher_forcing
@@ -177,7 +180,7 @@ def main(args):
                 dataset=datasets[split],
                 batch_size=args.batch_size,
                 shuffle=split=='train',
-                num_workers=cpu_count(),
+                # num_workers=cpu_count(),  # 8
                 pin_memory=torch.cuda.is_available()
             )
 
@@ -203,7 +206,7 @@ def main(args):
 
                 # Forward pass
                 # batch_size, sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths = encoder(batch['input'], batch['length'])  # use different embedding
-                batch_size, sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = encoder(batch['input'], batch['length'])
+                sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = encoder(batch['input'], batch['length'])
                 use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
                 # use_teacher_forcing = True
                 # print(use_teacher_forcing)
@@ -339,7 +342,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--data_dir', type=str, default='dataset')
     parser.add_argument('--create_data', action='store_true')
-    parser.add_argument('--max_sequence_length', type=int, default=60)
+    parser.add_argument('--max_sequence_length', type=int, default=100)  # seems no effect before
     parser.add_argument('--min_occ', type=int, default=1)
     parser.add_argument('--test', action='store_true')
 
