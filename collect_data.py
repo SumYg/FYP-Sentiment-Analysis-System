@@ -10,6 +10,12 @@ from os.path import basename
 import pandas as pd
 from traceback import format_exc
 
+from grouping import OpinionGrouper
+
+from common.sql_db import MyDB
+import datetime
+
+
 makedirs('./log', exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -42,9 +48,13 @@ def pipeline(target_tweets_no=1000):
     assert avg_tweets_no >= 10, "At least 10 tweets in each API call"
 
     keywords_no += 1
+    all_posts = []
+
+    
+    current_date = datetime.date.today()
 
     try:
-        for _, keyword in google_trends_keywords[::-1].itertuples():
+        for i, keyword in google_trends_keywords[::-1].itertuples():
             keywords_no -= 1
             if keyword in exclude_set:
                 continue
@@ -64,18 +74,25 @@ def pipeline(target_tweets_no=1000):
 
             # else:
             #     continue
+            all_posts = []
             tweets_no = target_tweets_no// keywords_no
 
             logging.info("Going to get "+keyword)
 
             reddit_submissions, reddit_comments = reddit_api.search_keyword(keyword)
+            all_posts.append(reddit_submissions[['text', 'ups']])
+            all_posts.append(reddit_comments[['body', 'ups']])
             reddit_submissions_no, reddit_comments_no = reddit_submissions.shape[0], reddit_comments.shape[0]
             logging.info(f"Got {reddit_submissions_no} Submissions, {reddit_comments_no} Comments from Reddit api")
             
+
+
+
             reddit_submissions_saved_name = files_saver.save_df2parquet(reddit_submissions, f"{keyword}_reddit_submissions")
             reddit_comments_saved_name = files_saver.save_df2parquet(reddit_comments, f"{keyword}_reddit_comments")
 
             result = sn_search_within_day(keyword, tweets_no=tweets_no)
+            all_posts.append(result[['text', 'like_count']])
             # print(result)
             result_no = result.shape[0]
             if result_no < tweets_no:
@@ -88,19 +105,59 @@ def pipeline(target_tweets_no=1000):
             keywords_file_map.append((keyword, basename(twitter_file_saved_name), result_no
                 , basename(reddit_submissions_saved_name), reddit_submissions_no
                 , basename(reddit_comments_saved_name), reddit_comments_no))
-
+            
+            for posts_df in all_posts:
+                posts_df.columns = ['text', 'likes']
+            process_posts(pd.concat(all_posts, axis=0, ignore_index=True), current_date, keyword, i)
+        
             # break
             # return
     except Exception as E:
             logging.error(f"{type(E)}\n"
                           f"{format_exc()}")
+        
 
     files_saver.save2csv(pd.DataFrame(data=reversed(keywords_file_map), columns=('Keyword', 'Twitter File', 'Tweets Count'
                                                                         , 'Reddit Submissions File', 'Reddit Submissions Count'
                                                                         , 'Reddit Comments File', 'Reddit Comments Count')), 'keyword2file')
 
+def process_posts(posts, current_date, keyword, i):
+    """
+    posts: df with columns ['text', 'likes']
+    """
+    text = posts['text'].tolist()
+    posts = posts.to_numpy().tolist()
+    print(text)
+    # similarity
+    g = OpinionGrouper('bin/2023-Apr-08-10:29:46/E24.pytorch', batch_size=128, score_threshold=0.6)
+    # print(g.get_unordred_pairs_score(text))
+    ranking = g.get_related(text)
+    print(ranking)
+    db = MyDB()
+
+    db.insert_keywords([[current_date, keyword, 122, 1, len(text), i]])
+
+    opinions = []
+
+    for o_id, related_ids, relatedness in ranking:
+        print(posts[o_id])
+        total_likes = posts[o_id][1]
+
+        similar_opinions = []
+
+        for r_id, score in related_ids:
+            print(text[r_id], score)
+            similar_opinions.append((text[r_id], score))
+            total_likes += posts[r_id][1]
+        print(total_likes)
+        print("--")
+
+        opinions.append((posts[o_id][0], len(related_ids)+1, total_likes, similar_opinions[:10]))
+
+    db.insert_opinions(opinions, i)
+
 if __name__ == '__main__':
-    pipeline(100000)
+    pipeline(200)
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
@@ -109,3 +166,8 @@ if __name__ == '__main__':
     # print("Read from local")
     # df = read_parquet(saved_path)
     # print(df)
+
+
+    # text = [p[0] for p in post]
+    # g = OpinionGrouper('bin/2023-Apr-08-10:29:46/E24.pytorch', batch_size=128, score_threshold=0.6)
+    # print(g.get_unordred_pairs_score(text))

@@ -6,6 +6,8 @@ import datetime
 import logging
 import pickle
 
+from joblib import load, dump
+
 ROOT_PATH = './data'
 
 def current_time_string():
@@ -40,11 +42,14 @@ def read_parquet(path):
 
 def save2pickle(obj, file_path):
     with open(file_path, 'wb') as f:
-        pickle.dump(obj, f)
+        # pickle.dump(obj, f)
+        dump(obj, f, compress='lz4')
+        
         
 def load_pickle(file_path):
     with open(file_path, 'rb') as f:
-        return pickle.load(f)
+        # return pickle.load(f)
+        return load(f)
 
 # split parquet by size
 # https://stackoverflow.com/questions/59887234/split-a-parquet-file-in-smaller-chunks-using-dask
