@@ -5,11 +5,14 @@ import mysql.connector
 
 class MyDB:
     def __init__(self) -> None:
+        with open('./cred/sql.txt', 'r') as f:
+            cred = f.read().split('\n')
+
         self.mydb = mysql.connector.connect(
             host="sophia.cs.hku.hk",
-            user="syeung",
-            password="du78qA",
-            database="syeung"
+            user=cred[0],
+            password=cred[1],
+            database=cred[0]
         )
         self.order2id = {}
 
@@ -80,9 +83,10 @@ if __name__ == '__main__':
     keywords = []
 
     db = MyDB()
-    db.insert_keywords([('2023-03-19', 'hello', '1', '2', 1233, 1), ('2023-03-19', 'world', '1', '2', 1233, 2)])
-    db.insert_opinions([('hello', 1, [('hi', 0.9), ('hello world', 0.8)]), ('world', 2, [])], 1)
-    db.insert_opinions([('this world', 1, [('hi this world', 0.9), ('hello world', 0.8)]), ('world!', 2, [])], 2)
+    
+    # db.insert_keywords([('2023-03-19', 'hello', '1', '2', 1233, 1), ('2023-03-19', 'world', '1', '2', 1233, 2)])
+    # db.insert_opinions([('hello', 1, [('hi', 0.9), ('hello world', 0.8)]), ('world', 2, [])], 1)
+    # db.insert_opinions([('this world', 1, [('hi this world', 0.9), ('hello world', 0.8)]), ('world!', 2, [])], 2)
     # db.insert_similar_opinion([('hi', 0.9), ('hello world', 0.8)], 2)
 
     # db.insert('FYP_Keywords', ['date', 'keyword', 'positive_score', 'negative_score', 'post_collected', 'display_order'], ['2023-04-18', 'hello', '1', '2', 1233, 1])
