@@ -11,6 +11,7 @@ import time
 from setup import load
 load()
 from utils import partial_experiment_name
+from model2 import VAEDecoder, VAEEncoder, get_bert_embedding
 from model_classification import SimilarClassifier, SentimentClassifier, EntailmentClassifier
 
 from transformers import AutoModel, AutoTokenizer
@@ -24,7 +25,9 @@ def to_var(x, device='cuda:1', requires_grad=False):
     return x.requires_grad_(requires_grad)
 
 def main(args):
-    pretrained_model_name = "princeton-nlp/sup-simcse-bert-base-uncased"
+    # pretrained_model_name = "princeton-nlp/sup-simcse-bert-base-uncased"
+    pretrained_model_name = 'bert-base-uncased'
+    model_path = 'bin/2023-Apr-13-07:33:29/E29.pytorch'
     
     def process_two_sentences(batch):
         
@@ -56,7 +59,7 @@ def main(args):
         # sentence2_representation = model(**tokenizer(batch['sentence2'], padding=True, truncation=True, return_tensors='pt'), output_hidden_states=False, return_dict=True).pooler_output
 
         # get the similarity score from classifier
-        return classifier(sentence1_representation.to('cuda:0'), sentence2_representation.to('cuda:0'))
+        return classifier(sentence1_representation.detach().to('cuda:0'), sentence2_representation.detach().to('cuda:0'))
 
     def process(batch):
         sentence = batch['sentence']
@@ -74,7 +77,7 @@ def main(args):
         
 
         sentence_representation = model(**sentence, output_hidden_states=False, return_dict=True).pooler_output
-        return classifier(sentence_representation.to('cuda:0'))
+        return classifier(sentence_representation.detach().to('cuda:0'))
     
     ts = time.strftime('%Y-%b-%d-%H:%M:%S', time.localtime())
     st_time = time.time()
@@ -110,7 +113,17 @@ def main(args):
 
 
 
-    model = AutoModel.from_pretrained(pretrained_model_name)
+    # model = AutoModel.from_pretrained(pretrained_model_name)
+
+    with open(os.path.dirname(model_path) + '/model_params.json', 'r') as f:
+        model_params = json.load(f)
+    embedding_size, bert_embedding = get_bert_embedding(pretrained_model_name)
+    model_params['embedding_size'] = embedding_size
+    model_params['embedding'] = bert_embedding
+    model = VAEEncoder(**model_params)
+
+    with open(model_path, 'rb') as f:
+        model = torch.load(f)
 
     # no backward pass
     for param in model.parameters():
@@ -119,6 +132,8 @@ def main(args):
     params = {
         'task': args.task,
         'pretrained_model': pretrained_model_name,
+        'model_path': model_path,
+        'model_type': 'LSTM-VAE',
         'learning_rate': args.learning_rate,
         'batch_size': args.batch_size,
         'hidden_size': model.config.hidden_size,
@@ -167,7 +182,7 @@ def main(args):
                 datasets[split]
                 , batch_size=args.batch_size
                 , shuffle=split=='train'
-                , num_workers=cpu_count() // 2
+                , num_workers=4  # cpu_count() // 2
                 , pin_memory=torch.cuda.is_available()
             )
             tracker = defaultdict(tensor)
@@ -185,6 +200,7 @@ def main(args):
 
                 # calculate the loss
                 l = to_var(batch['label'], device=score.device)
+                # print(score, l)
                 loss = criterion(score, l)
 
                 # backward + optimization
