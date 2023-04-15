@@ -11,7 +11,10 @@ import time
 from setup import load
 load()
 from utils import partial_experiment_name
-from model2 import VAEDecoder, VAEEncoder, get_bert_embedding
+
+from model2 import VAEEncoder, get_bert_embedding
+from input_dataset import InputDataset
+
 from model_classification import SimilarClassifier, SentimentClassifier, EntailmentClassifier
 
 from transformers import AutoModel, AutoTokenizer
@@ -53,7 +56,8 @@ def main(args):
             # if torch.is_tensor(v):
             #     sentence2[k] = to_var(v)
 
-        sentence2_representation = model(**sentence2, output_hidden_states=False, return_dict=True).pooler_output
+        sentence2_representation = encoder(sentence2)
+        # sentence2_representation = model(**sentence2, output_hidden_states=False, return_dict=True).pooler_output
 
 
         # sentence2_representation = model(**tokenizer(batch['sentence2'], padding=True, truncation=True, return_tensors='pt'), output_hidden_states=False, return_dict=True).pooler_output
@@ -76,7 +80,8 @@ def main(args):
                 # sentence[k] = to_var(v)
         
 
-        sentence_representation = model(**sentence, output_hidden_states=False, return_dict=True).pooler_output
+        sentence_representation = encoder(sentence)
+        # sentence_representation = model(**sentence, output_hidden_states=False, return_dict=True).pooler_output
         return classifier(sentence_representation.detach().to('cuda:0'))
     
     ts = time.strftime('%Y-%b-%d-%H:%M:%S', time.localtime())
@@ -137,11 +142,21 @@ def main(args):
         'learning_rate': args.learning_rate,
         'batch_size': args.batch_size,
         # 'hidden_size': model.config.hidden_size,
-        'hidden_size': model.hidden_size,
+        'hidden_size': model.latent_size,
         'epochs': args.epochs,
         'loss': loss_name,
         'ts': ts
     }
+
+    VAE_dataset = InputDataset(
+        max_sequence_length=args.max_sequence_length,
+        online=True
+    )
+
+    def encoder(sentence_batch):
+        batch = VAE_dataset._construct_data(sentence_batch)
+        sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = model(batch['input'], batch['length'])
+        return z
 
     classifier = classifier_model(**params)
 
