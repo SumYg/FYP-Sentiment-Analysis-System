@@ -123,7 +123,9 @@ def main(args):
     model = VAEEncoder(**model_params)
 
     with open(model_path, 'rb') as f:
-        model = torch.load(f)
+        model_dict = torch.load(f)
+
+    model.load_state_dict(model_dict['encoder_state_dict'])
 
     # no backward pass
     for param in model.parameters():
