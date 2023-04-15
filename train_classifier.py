@@ -123,9 +123,7 @@ def main(args):
     model = VAEEncoder(**model_params)
 
     with open(model_path, 'rb') as f:
-        model_dict = torch.load(f)
-
-    model.load_state_dict(model_dict['encoder_state_dict'])
+        model.load_state_dict(torch.load(f)['encoder_state_dict'])
 
     # no backward pass
     for param in model.parameters():
@@ -138,7 +136,8 @@ def main(args):
         'model_type': 'LSTM-VAE',
         'learning_rate': args.learning_rate,
         'batch_size': args.batch_size,
-        'hidden_size': model.config.hidden_size,
+        # 'hidden_size': model.config.hidden_size,
+        'hidden_size': model.hidden_size,
         'epochs': args.epochs,
         'loss': loss_name,
         'ts': ts
