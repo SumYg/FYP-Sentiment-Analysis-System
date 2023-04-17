@@ -10,11 +10,13 @@ from os.path import basename
 import pandas as pd
 from traceback import format_exc
 
-from grouping import OpinionGrouper
+from grouping import process
 
 from common.sql_db import MyDB
 import datetime
 
+from data_cleaning import preprocess
+import spacy
 
 makedirs('./log', exist_ok=True)
 logging.basicConfig(
@@ -53,8 +55,10 @@ def pipeline(target_tweets_no=1000):
     
     current_date = datetime.date.today()
 
+    nlp = spacy.load("en_core_web_sm")
+
     try:
-        for i, keyword in google_trends_keywords[::-1].itertuples():
+        for i, keyword in google_trends_keywords[:10][::-1].itertuples():
             keywords_no -= 1
             if keyword in exclude_set:
                 continue
@@ -86,8 +90,6 @@ def pipeline(target_tweets_no=1000):
             logging.info(f"Got {reddit_submissions_no} Submissions, {reddit_comments_no} Comments from Reddit api")
             
 
-
-
             reddit_submissions_saved_name = files_saver.save_df2parquet(reddit_submissions, f"{keyword}_reddit_submissions")
             reddit_comments_saved_name = files_saver.save_df2parquet(reddit_comments, f"{keyword}_reddit_comments")
 
@@ -108,7 +110,7 @@ def pipeline(target_tweets_no=1000):
             
             for posts_df in all_posts:
                 posts_df.columns = ['text', 'likes']
-            process_posts(pd.concat(all_posts, axis=0, ignore_index=True), current_date, keyword, i)
+            process_posts(pd.concat(all_posts, axis=0, ignore_index=True), current_date, keyword, i, nlp)
         
             # break
             # return
@@ -121,43 +123,64 @@ def pipeline(target_tweets_no=1000):
                                                                         , 'Reddit Submissions File', 'Reddit Submissions Count'
                                                                         , 'Reddit Comments File', 'Reddit Comments Count')), 'keyword2file')
 
-def process_posts(posts, current_date, keyword, i):
+
+class SplitedPost:
+    def __init__(self, preprocessed_text, posts, nlp):
+        text = []
+        post_id = []
+        for i, t in enumerate(preprocessed_text):
+            doc = nlp(t)
+            for splited in doc.sents:
+                text.append(splited.text.strip())
+                post_id.append(i)
+
+        self.text = text
+        self.post_id = post_id
+        self.posts = posts
+    
+    def __getitem__(self, index):
+        return self.text[index], self.posts[self.post_id[index]][1], self.post_id[index]
+    
+    def __len__(self):
+        return len(self.posts)
+
+
+def process_posts(posts, current_date, keyword, i, nlp):
     """
     posts: df with columns ['text', 'likes']
     """
+    logging.info(f"Drop duplicate posts, original no. of posts: {len(posts)}")
+    posts.drop_duplicates(subset=['text'], inplace=True)
+
+    logging.info(f"Preprocessing post with length {len(posts)}")
+    posts['text'] = posts['text'].apply(preprocess)
+
+    logging.info(f"Drop duplicate posts after preprocessing, no. of posts: {len(posts)}")
+    posts.drop_duplicates(subset=['text'], inplace=True)
+
+
+    logging.info(f"Removing empty posts")
+    posts = posts[posts['text'].apply(lambda x: len(x) > 0)]
+        
     text = posts['text'].tolist()
     posts = posts.to_numpy().tolist()
-    print(text)
-    # similarity
-    g = OpinionGrouper('bin/2023-Apr-08-10:29:46/E24.pytorch', batch_size=128, score_threshold=0.6)
-    # print(g.get_unordred_pairs_score(text))
-    ranking = g.get_related(text)
-    print(ranking)
+
+    logging.info(f"Splitting posts")
+    splited_posts = SplitedPost(text, posts, nlp)
+    logging.info(f"No. of splited posts: {len(splited_posts.text)}")
+
+        
+    semtiment, similar_opinions_return, entailed_opinions_return = process(splited_posts, splited_posts.text)
+
     db = MyDB()
+    db.insert_keywords([[current_date, keyword, semtiment, len(splited_posts), i]])
+    
 
-    db.insert_keywords([[current_date, keyword, 122, 1, len(text), i]])
-
-    opinions = []
-
-    for o_id, related_ids, relatedness in ranking:
-        print(posts[o_id])
-        total_likes = posts[o_id][1]
-
-        similar_opinions = []
-
-        for r_id, score in related_ids:
-            print(text[r_id], score)
-            similar_opinions.append((text[r_id], score))
-            total_likes += posts[r_id][1]
-        print(total_likes)
-        print("--")
-
-        opinions.append((posts[o_id][0], len(related_ids)+1, total_likes, similar_opinions[:10]))
-
-    db.insert_opinions(opinions, i)
+    db.insert_opinions(similar_opinions_return, i)
+    db.insert_opinions(entailed_opinions_return, i, class_=1)
 
 if __name__ == '__main__':
-    pipeline(200)
+    pipeline(300000)
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')
