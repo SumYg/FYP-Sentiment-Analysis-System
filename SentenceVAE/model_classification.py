@@ -57,3 +57,6 @@ class EntailmentClassifier(nn.Module):
         x = torch.cat((x1, x2), dim=1)
         x = self.fc2(x)
         return self.softmax(x)
+    
+    def inference(self, x1, x2):
+        return self.forward(x1, x2)[:, 0]  # entailment score
