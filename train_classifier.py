@@ -20,6 +20,7 @@ from model_classification import SimilarClassifier, SentimentClassifier, Entailm
 from transformers import AutoModel, AutoTokenizer
 
 from public_dataset import STSDataset, SST2Dataset, SNLIDataset
+from input_dataset import VAETokenizer
 from collections import OrderedDict, defaultdict
 
 def to_var(x, device='cuda:1', requires_grad=False):
@@ -42,19 +43,25 @@ def main(args):
             # print(len(v[0]))
             # print(len(v[0][0]), type(v[0][0]))
             # print(v[0][0].shape)
-            sentence1[k] = to_var(torch.stack(v)).T
+            if isinstance(v, list):  # checking may not be neccessary
+                sentence1[k] = to_var(torch.stack(v)).T
+            else:
+                sentence1[k] = to_var(v)
             # print(sentence1[k].shape)
             # if torch.is_tensor(v):
             #     sentence1[k] = to_var(v)
-
-        sentence1_representation = model(**sentence1, output_hidden_states=False, return_dict=True).pooler_output
-
+        # print(sentence1)
+        # 0/0
+        sentence1_representation = encoder(sentence1)
+        # sentence1_representation = model(**sentence1, output_hidden_states=False, return_dict=True).pooler_output
+        # print(sentence1_representation.shape)
         sentence2 = batch['sentence2']
         
         for k, v in sentence2.items():
-            sentence2[k] = to_var(torch.stack(v)).T
-            # if torch.is_tensor(v):
-            #     sentence2[k] = to_var(v)
+            if isinstance(v, list):
+                sentence2[k] = to_var(torch.stack(v)).T
+            else:
+                sentence2[k] = to_var(v)
 
         sentence2_representation = encoder(sentence2)
         # sentence2_representation = model(**sentence2, output_hidden_states=False, return_dict=True).pooler_output
@@ -69,7 +76,10 @@ def main(args):
         sentence = batch['sentence']
 
         for k, v in sentence.items():
-            sentence[k] = to_var(torch.stack(v)).T
+            if isinstance(v, list):
+                sentence[k] = to_var(torch.stack(v)).T
+            else:
+                sentence[k] = to_var(v)
             # print(k, type(v))
             # if torch.is_tensor(v):
             #     print(v.shape)
@@ -111,12 +121,12 @@ def main(args):
     else:
         raise ValueError("Task not supported")
 
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
+    # tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
+    tokenizer = VAETokenizer()
 
     for split in splits:
         datasets[split] = dataset(tokenizer, split)
-
-
+ 
 
     # model = AutoModel.from_pretrained(pretrained_model_name)
 
@@ -147,14 +157,14 @@ def main(args):
         'loss': loss_name,
         'ts': ts
     }
+    print(model.max_sequence_length)
+    # VAE_dataset = InputDataset(
+    #     max_sequence_length=model.max_sequence_length,
+    #     online=True
+    # )
 
-    VAE_dataset = InputDataset(
-        max_sequence_length=args.max_sequence_length,
-        online=True
-    )
-
-    def encoder(sentence_batch):
-        batch = VAE_dataset._construct_data(sentence_batch)
+    def encoder(batch):
+        # batch = VAE_dataset._construct_data(sentence_batch)
         sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = model(batch['input'], batch['length'])
         return z
 
