@@ -12,16 +12,51 @@ from utils import to_var
 import numpy as np
 
 class OpinionRepresenter:
-    def __init__(self, text, pretrained_model_name, batch_size=128):
-        model = AutoModel.from_pretrained(pretrained_model_name)
-        tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
+    def __init__(self, text, pretrained_model_name, batch_size=128, local_model_type=None, local_model_path=None):
+        if local_model_type:
+            if local_model_type != 'lstm':
+                raise NotImplementedError
+            from model2 import VAEEncoder, get_bert_embedding
+            from input_dataset import VAETokenizer
+            
+            with open(os.path.dirname(local_model_path) + '/model_params.json', 'r') as f:
+                model_params = json.load(f)
+            embedding_size, bert_embedding = get_bert_embedding(pretrained_model_name)
+            model_params['embedding_size'] = embedding_size
+            model_params['embedding'] = bert_embedding
+            model_params['tensor_device'] = 'cuda:0'  # no cuda 1 available
+            encoder = VAEEncoder(**model_params)
 
-        # Set the gradient computation behavior for the model
-        for param in model.parameters():
-            param.requires_grad = False
+            with open(local_model_path, 'rb') as f:
+                encoder.load_state_dict(torch.load(f, map_location=torch.device('cuda:0'))['encoder_state_dict'])
+            if torch.cuda.is_available():
+                encoder.cuda()
+            # no backward pass
+            for param in encoder.parameters():
+                param.requires_grad = False
 
-        if torch.cuda.is_available():
-            model = model.cuda()
+            class pooler:
+                pass
+            
+            def model(**batch):
+                # batch = VAE_dataset._construct_data(sentence_batch)
+                _, _, _, z, _, _ = encoder(batch['input'], batch['length'])
+                r = pooler()
+                r.pooler_output = z
+                return r
+            tokenizer = VAETokenizer()
+
+            
+        else:
+            model = AutoModel.from_pretrained(pretrained_model_name)
+            tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
+
+            # Set the gradient computation behavior for the model
+            for param in model.parameters():
+                param.requires_grad = False
+
+            if torch.cuda.is_available():
+                model = model.cuda()
 
         self.representations = []
         for i in range(0, len(text), batch_size):
@@ -214,13 +249,25 @@ class OpinionGrouper:
     
     def get_ordered_given_pairs_score(self, r1, r2):
         # scores = []
-        scores = torch.empty((0, 1))
+        scores = torch.empty((0,))
 
         for i in range(0, len(r1), self.batch_size):
             representation_1_batch = r1.get_sentence_representations(range(i, i+self.batch_size))
             others = r2.get_sentence_representations(range(i, i+self.batch_size))
             # scores.append(self.classifier.inference(representation_1_batch, others))
             scores = torch.cat((scores, self.classifier.inference(representation_1_batch, others).cpu()))
+
+        return scores if scores.nelement() > 0 else torch.Tensor([])
+
+    def get_unordered_given_pairs_score(self, r1, r2):
+        # scores = []
+        scores = torch.empty((0,))
+
+        for i in range(0, len(r1), self.batch_size):
+            representation_1_batch = r1.get_sentence_representations(range(i, i+self.batch_size))
+            others = r2.get_sentence_representations(range(i, i+self.batch_size))
+            # scores.append(self.classifier(representation_1_batch, others))
+            scores = torch.cat((scores, self.classifier(representation_1_batch, others).cpu()))
 
         return scores if scores.nelement() > 0 else torch.Tensor([])
      
