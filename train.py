@@ -159,7 +159,7 @@ def main(args):
 
         return nll_loss, KL_loss, KL_weight
 
-    encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate) #, weight_decay=1e-3)
+    encoder_optimizer = torch.optim.Adam(encoder.parameters()optimizer) #, weight_decay=1e-3)
     decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate) #, weight_decay=3e-3)
 
     tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
