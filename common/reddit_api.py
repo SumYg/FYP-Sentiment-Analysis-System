@@ -24,7 +24,7 @@ class RedditAPI:
             self.comments = []
             self.comment_columns = ('parent_id', 'comment_id', 'body', 'created_at_utc', 'score', 'ups', 'downs', 'stickied', 'depth')
 
-        def get_all_comments(self, submission):
+        def get_all_comments(self, submission, limit=1000):
             # iterate through comments from submission
             # url = "https://www.reddit.com/r/funny/comments/3g1jfi/buttons/"
             # submission = self.reddit.submission(url=url)
@@ -33,6 +33,8 @@ class RedditAPI:
             submission_id = submission.id
             # for top_level_comment in submission.comments:
             for top_level_comment in submission.comments.list():
+                if len(self.comments) >= limit:
+                    break
                 # if isinstance(top_level_comment, MoreComments):
                 #     continue
                 # print(top_level_comment.body)
@@ -48,7 +50,7 @@ class RedditAPI:
             return len(self.comments)
             
 
-    def search_keyword(self, keyword, limit=1000, time_filter='day'):
+    def search_keyword(self, keyword, limit=1000, time_filter='day', reddit_submissions_no=None, reddit_comments_no=None):
         """
         Return (Submissions DataFrame, Comments DataFrame)
         """
@@ -59,6 +61,7 @@ class RedditAPI:
         comments = self.Comments()
 
         logging.info("Request Reddit API")
+
         for submission in self.all.search(keyword, limit=limit, time_filter=time_filter):
             # print(type(submission), submission)
             # print(submission.id)
@@ -71,9 +74,15 @@ class RedditAPI:
             data.append((submission.id, submission.title, submission.selftext, datetime.utcfromtimestamp(submission.created_utc)
                 , submission.num_comments, submission.score, submission.ups, submission.downs, submission.spoiler, submission.stickied, submission.upvote_ratio
                 ,submission.is_original_content, submission.is_self))
+            
             logging.info("Start to get Comments")
-            comments.get_all_comments(submission)
+            comments.get_all_comments(submission, limit=reddit_comments_no-comments.length)
             logging.info(f"Got all Comments, stored {comments.length}")
+            
+            if reddit_submissions_no and len(data) >= reddit_submissions_no:
+                break
+            if reddit_comments_no and comments.length >= reddit_comments_no:
+                break
             # break
         logging.info("Request Reddit API Finished")
         

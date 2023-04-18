@@ -10,6 +10,7 @@ from model_classification import SimilarClassifier, SentimentClassifier, Entailm
 from utils import to_var
 
 import numpy as np
+import logging
 
 class OpinionRepresenter:
     def __init__(self, text, pretrained_model_name, batch_size=128, local_model_type=None, local_model_path=None):
@@ -60,13 +61,16 @@ class OpinionRepresenter:
 
         self.representations = []
         for i in range(0, len(text), batch_size):
+            # report progress
+            print(f"Representing {i}/{len(text)}")
+
             batch = text[i:i+batch_size]
             # convert text to representations
             tokens = tokenizer(batch, return_tensors='pt', padding=True, truncation=True)
             # print(tokens)
             for k, v in tokens.items():
                 tokens[k] = to_var(v)
-
+            
             with torch.no_grad():
                 representations = model(**tokens).pooler_output
                 # print(representations)
@@ -80,7 +84,7 @@ class OpinionRepresenter:
         for i in indices:
             if i < len(self.representations):
                 sliced.append(self.representations[i])
-        return torch.stack(sliced).cuda()
+        return torch.stack(sliced).cuda() if sliced else torch.empty(0).cuda()  # when 
     
     def __len__(self):
         return len(self.representations)
@@ -179,7 +183,7 @@ class OpinionGrouper:
                 # selected_indices = [k for k in range(j, j+self.batch_size)]
                 # temp_indices.extend(selected_indices)
                 # others = representations.get_sentence_representations(selected_indices)
-                others = representations.get_sentence_representations([k for k in range(j, j+self.batch_size)])
+                others = representations.get_sentence_representations(range(j, j+self.batch_size))
 
                 # duplicate representation_1 to match the length of representations
                 representation_1_batch = representation_1.repeat(len(others), 1)
@@ -217,6 +221,8 @@ class OpinionGrouper:
             for j in range(0, len(representations), self.batch_size):
                 # print("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
                 others = representations.get_sentence_representations((k for k in range(j, j+self.batch_size) if k != i))
+                if others.nelement() == 0:
+                    continue
                 representation_1_batch = representation_1.repeat(len(others), 1)
                 # process the batch
                 # temp_scores.append(self.classifier.inference(representation_1_batch, others).cpu())
@@ -382,7 +388,9 @@ def group_opinions(posts, text, ranking, max_similar_opinions):
     
 def process(posts, text, max_similar_opinions=10):
     # around 6 GB GPU memory
-    g = OpinionGrouper('bin/2023-Apr-10-20:13:14/E4.pytorch', batch_size=128, score_threshold=0.6296)
+    logging.info("Start ================================================")
+    g = OpinionGrouper('bin/2023-Apr-10-20:13:14/E4.pytorch', batch_size=166, score_threshold=0.6296)
+    logging.debug("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
     pretrained_model_name = g.pretrained_model_name
 
     representer = OpinionRepresenter(text, pretrained_model_name, batch_size=g.batch_size)
@@ -390,28 +398,28 @@ def process(posts, text, max_similar_opinions=10):
     # semtiment
     semtiment = g.get_aggregated_score(representer)
     # del g
-    print("Sentiment Finished ================================================")
-    print("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
+    logging.info("Sentiment Finished ================================================")
+    logging.debug("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
 
     # similarity
-    g = OpinionGrouper('bin/2023-Apr-08-10:29:46/E24.pytorch', batch_size=128, score_threshold=0.6)
+    g = OpinionGrouper('bin/2023-Apr-08-10:29:46/E24.pytorch', batch_size=166, score_threshold=0.6)
     # print(g.get_unordred_pairs_score(text))
     ranking = g.get_related(representer)
     # del g
     # print(ranking)
     similar_opinions_return = group_opinions(posts, text, ranking, max_similar_opinions)
-    print("Similarity Finished ================================================")
-    print("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
+    logging.info("Similarity Finished ================================================")
+    logging.debug("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
     # import time
     # time.sleep(10)
     # entailment
-    g = OpinionGrouper('bin/2023-Apr-09-00:49:15/E4.pytorch', batch_size=128, score_threshold=0.109159)
+    g = OpinionGrouper('bin/2023-Apr-09-00:49:15/E4.pytorch', batch_size=166, score_threshold=0.109159)
     ranking = g.get_related(representer)
     # del g
     # print(ranking)
     entailed_opinions_return = group_opinions(posts, text, ranking, max_similar_opinions)
-    print("Entailment Finished ================================================")
-    print("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
+    logging.info("Entailment Finished ================================================")
+    logging.debug("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
 
 
     return semtiment, similar_opinions_return, entailed_opinions_return
