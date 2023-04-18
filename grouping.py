@@ -361,29 +361,30 @@ class OpinionGrouper:
 def group_opinions(posts, text, ranking, max_similar_opinions):
     opinions_return = []
 
-    related_posts_ids = set()
+    related_sentences_ids = set()
     for o_id, related_ids, relatedness in ranking:
         splited_text, likes, post_id = posts[o_id]
-        if post_id in related_posts_ids:
+        if o_id in related_sentences_ids:
             continue
-        related_posts_ids.add(post_id)
-        # print(splited_text, likes, post_id)
+        related_sentences_ids.add(o_id)
         total_likes = likes
 
         similar_opinions = []
 
+        unique_posts_ids = set([post_id])
+
         for r_id, score in related_ids:
-            # print(text[r_id], score)
             similar_opinions.append((text[r_id], score))
             _, r_likes, r_post_id = posts[r_id]
-            if r_post_id not in related_posts_ids:
+            related_sentences_ids.add(r_id)
+            if r_post_id not in unique_posts_ids:
                 total_likes += r_likes
-                related_posts_ids.add(r_post_id)
+                unique_posts_ids.add(r_post_id)
         # print(total_likes)
         # print("--")
         
 
-        opinions_return.append((splited_text, len(related_posts_ids), total_likes, relatedness, similar_opinions[:max_similar_opinions]))
+        opinions_return.append((splited_text, len(unique_posts_ids), total_likes, relatedness, similar_opinions[:max_similar_opinions]))
     return opinions_return
     
 def process(posts, text, max_similar_opinions=10):
