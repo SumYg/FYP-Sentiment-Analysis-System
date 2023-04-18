@@ -367,10 +367,10 @@ def group_opinions(posts, text, ranking, max_similar_opinions):
         if o_id in related_sentences_ids:
             continue
         related_sentences_ids.add(o_id)
-        total_likes = likes
 
         similar_opinions = []
 
+        total_likes = likes
         unique_posts_ids = set([post_id])
 
         for r_id, score in related_ids:
