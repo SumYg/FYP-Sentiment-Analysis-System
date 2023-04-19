@@ -28,7 +28,7 @@ logging.basicConfig(
     ]
 )
 
-def pipeline(target_tweets_no=1000):
+def pipeline(target_tweets_no=1000, target_reddit_comments_no=1000, target_reddit_submissions_no=1000):
     google_trends = GoogleTrends()
 
     keywords_file_map = []
@@ -42,12 +42,12 @@ def pipeline(target_tweets_no=1000):
 
     google_trends_keywords = google_trends.get_trending_searches()
 
-    keywords_no = google_trends_keywords.shape[0]
+    top_k_keywords = google_trends_keywords[:10]
+    keywords_no = top_k_keywords.shape[0]
 
     logging.info(f"Target Number of Tweets: {target_tweets_no}")
     avg_tweets_no = target_tweets_no // keywords_no
     logging.info(f"Average Number of Tweets per keyword: {avg_tweets_no}")
-    assert avg_tweets_no >= 10, "At least 10 tweets in each API call"
 
     keywords_no += 1
     all_posts = []
@@ -58,7 +58,7 @@ def pipeline(target_tweets_no=1000):
     nlp = spacy.load("en_core_web_sm")
 
     try:
-        for i, keyword in google_trends_keywords[:10][::-1].itertuples():
+        for i, keyword in top_k_keywords[::-1].itertuples():
             keywords_no -= 1
             if keyword in exclude_set:
                 continue
@@ -80,13 +80,17 @@ def pipeline(target_tweets_no=1000):
             #     continue
             all_posts = []
             tweets_no = target_tweets_no// keywords_no
+            reddit_submissions_no = target_reddit_submissions_no // keywords_no
+            reddit_comments_no = target_reddit_comments_no // keywords_no
 
             logging.info("Going to get "+keyword)
 
-            reddit_submissions, reddit_comments = reddit_api.search_keyword(keyword)
+            reddit_submissions, reddit_comments = reddit_api.search_keyword(keyword, reddit_submissions_no=reddit_submissions_no, reddit_comments_no=reddit_comments_no)
             all_posts.append(reddit_submissions[['text', 'ups']])
             all_posts.append(reddit_comments[['body', 'ups']])
             reddit_submissions_no, reddit_comments_no = reddit_submissions.shape[0], reddit_comments.shape[0]
+            target_reddit_comments_no -= reddit_comments_no
+            target_reddit_submissions_no -= reddit_submissions_no
             logging.info(f"Got {reddit_submissions_no} Submissions, {reddit_comments_no} Comments from Reddit api")
             
 
@@ -161,6 +165,10 @@ def process_posts(posts, current_date, keyword, i, nlp):
 
     logging.info(f"Removing empty posts")
     posts = posts[posts['text'].apply(lambda x: len(x) > 0)]
+
+    logging.info(f"Randomly sample 10000 posts if no. of posts > 10000")
+    if len(posts) > 10000:
+        posts = posts.sample(n=10000, random_state=42)
         
     text = posts['text'].tolist()
     posts = posts.to_numpy().tolist()
@@ -180,7 +188,7 @@ def process_posts(posts, current_date, keyword, i, nlp):
     db.insert_opinions(entailed_opinions_return, i, class_=1)
 
 if __name__ == '__main__':
-    pipeline(300000)
+    pipeline(target_tweets_no=30000, target_reddit_submissions_no=10000, target_reddit_comments_no=20000)
 
     # logging.info("Load parquet from disk")
     # df = read_parquet('./data\Clemson football_2022-09-25T11-28-15.parquet.bz')

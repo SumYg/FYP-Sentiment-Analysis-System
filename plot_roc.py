@@ -1,31 +1,52 @@
-
-from transformers import AutoModel, AutoTokenizer
-import torch
-import os, json
-
-
-from setup import load
-load()
-from model_classification import SimilarClassifier, SentimentClassifier, EntailmentClassifier
-from utils import to_var
-
 import numpy as np
 
 from grouping import OpinionRepresenter, OpinionGrouper
 from datasets import load_dataset
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
+from sklearn.metrics import f1_score
 
 if __name__ == '__main__':
     split = 'validation'
 
+    # # similarity
+    # dataset = load_dataset('glue', 'stsb')[split]
+
+    # # g = OpinionGrouper('bin/lstm_similarity/E49.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
+    # # representer1 = OpinionRepresenter(dataset['sentence1'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+    # # representer2 = OpinionRepresenter(dataset['sentence2'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+
+    # g = OpinionGrouper('bin/2023-Apr-08-10:29:46/E24.pytorch', batch_size=128, score_threshold=0.6)
+    # pretrained_model_name = g.pretrained_model_name
+
+    # representer1 = OpinionRepresenter(dataset['sentence1'], pretrained_model_name, batch_size=g.batch_size)
+    # representer2 = OpinionRepresenter(dataset['sentence2'], pretrained_model_name, batch_size=g.batch_size)
+
+    # similarity_score = g.get_unordered_given_pairs_score(representer1, representer2)
+
+    # # get the Pearson-Spearman Corr
+    # from scipy.stats import pearsonr, spearmanr
+    # corr, _ = pearsonr(similarity_score, dataset['label'])
+    # print('Pearsons correlation: %.3f' % corr)
+    # corr, _ = spearmanr(similarity_score, dataset['label'])
+    # print('Spearmans correlation: %.3f' % corr)
+
+    # print(similarity_score.shape)
+
+    # exit()
+
+
     # # sentiment
+    # dataset = load_dataset('glue', 'sst2')[split]
+
+    # # g = OpinionGrouper('bin/lstm_sentiment/E29.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
+    # # representer = OpinionRepresenter(dataset['sentence'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+
+
     # g = OpinionGrouper('bin/2023-Apr-10-20:13:14/E4.pytorch', batch_size=128, score_threshold=0.6)
     # pretrained_model_name = g.pretrained_model_name
-    # tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
 
 
-    # dataset = load_dataset('glue', 'sst2')[split]
     # print(dataset['sentence'][:3])
     # print(len(dataset))
     # representer = OpinionRepresenter(dataset['sentence'], pretrained_model_name, batch_size=g.batch_size)
@@ -34,14 +55,22 @@ if __name__ == '__main__':
 
     # print(sentiment_score.shape)
 
+    # score = sentiment_score
+
 
     # entailment
     split = 'test'
+    dataset = load_dataset('snli')[split].map(lambda x: {'label': int(x['label'] == 0)})
+
+    # g = OpinionGrouper('bin/lstm_entailment/E44.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
+
+    # premise_representer = OpinionRepresenter(dataset['premise'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+    # hypothesis_representer = OpinionRepresenter(dataset['hypothesis'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+
+    # simcse
     g = OpinionGrouper('bin/2023-Apr-09-00:49:15/E4.pytorch', batch_size=128, score_threshold=0.6)
     pretrained_model_name = g.pretrained_model_name
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name)
 
-    dataset = load_dataset('snli')[split].map(lambda x: {'label': int(x['label'] == 0)})
     
     premise_representer = OpinionRepresenter(dataset['premise'], pretrained_model_name, batch_size=g.batch_size)
     hypothesis_representer = OpinionRepresenter(dataset['hypothesis'], pretrained_model_name, batch_size=g.batch_size)
@@ -50,8 +79,9 @@ if __name__ == '__main__':
 
     print(entailment_score.shape)
 
-
     score = entailment_score
+
+
 
     fpr, tpr, thresholds = roc_curve(dataset['label'], score.cpu().detach().numpy())
 
@@ -76,4 +106,8 @@ if __name__ == '__main__':
     plt.title('Receiver operating characteristic (ROC) curve')
     plt.legend(loc="lower right")
     plt.savefig("z1.png")
+
+    # report the f1 score
+    y_pred = (score >= best_threshold).cpu().detach().numpy()
+    print(f"F1={f1_score(dataset['label'], y_pred)}")
 
