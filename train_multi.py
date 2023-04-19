@@ -9,18 +9,21 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
 from collections import OrderedDict, defaultdict
 
-from transformers import BertModel
-
 from setup import load
 load()
 # from ptb import PTB
 from input_dataset import InputDataset
-from utils import to_var, idx2word, expierment_name
+from utils import to_var, expierment_name
 # from model import VAEDecoder, VAEEncoder
 from model2 import VAEDecoder, VAEEncoder, get_bert_embedding
 from torch import nn
 import random
 from math import ceil
+
+def to_var(x, device='cuda:1', requires_grad=False):
+    if torch.cuda.is_available():
+        x = x.to(device)
+    return x.requires_grad_(requires_grad)
 
 def create_batch(texts, teacher_forcing_prob):
     input_ids = []
@@ -60,11 +63,12 @@ def main(args):
     splits = ['train', 'valid']
 
     datasets = OrderedDict()
+    print(f"Use large dataset: {args.large_dataset}")
     for split in splits:
         datasets[split] = InputDataset(
             data_dir=args.data_dir,
             # raw_data_filename='sentence_split_full_7061004_skip_first_0',
-            raw_data_filename='sentence_split_99999_skip_first_0',
+            raw_data_filename= 'sentence_split_full_7061004_skip_first_0' if args.large_dataset else 'sentence_split_99999_skip_first_0',
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
@@ -73,6 +77,10 @@ def main(args):
 
     pretrained_name = 'bert-base-uncased'
     embedding_size, bert_embedding = get_bert_embedding(pretrained_name)
+
+
+    # devices = [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     params = dict(
         vocab_size=datasets['train'].vocab_size,
@@ -89,19 +97,22 @@ def main(args):
         embedding_dropout=args.embedding_dropout,
         latent_size=args.latent_size,
         num_layers=args.num_layers,
-        bidirectional=args.bidirectional
+        bidirectional=args.bidirectional,
+        tensor_device=device
     )
     sos_idx = datasets['train'].sos_idx  # eos_idx = datasets['train'].eos_idx
 
-    # devices = [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     encoder = VAEEncoder(**params)
     # encoder.to(devices)
     # decoder = VAEDecoder(**params, bert=encoder.bert)
     decoder = VAEDecoder(**params)
     # decoder.to(devices)
-    if torch.cuda.device_count() > 1:
+    if torch.cuda.device_count() == 2:  # specialized
+        device = torch.device("cuda:1")
+        encoder = encoder.to(device)
+        decoder = decoder.to(device)
+    elif torch.cuda.device_count() > 1:
         # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         encoder = nn.DataParallel(encoder)
@@ -142,6 +153,7 @@ def main(args):
     os.makedirs(save_model_path)
 
     params['embedding'] = pretrained_name
+    params['tensor_device'] = str(device)
 
     with open(os.path.join(save_model_path, 'model_params.json'), 'w') as f:
         json.dump(params, f, indent=4)
@@ -189,9 +201,9 @@ def main(args):
     encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate) #, weight_decay=1e-3)
     decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate) #, weight_decay=3e-3)
 
-    tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
-    step = 0
 
+    step = 0
+    tensor = lambda: torch.cuda.FloatTensor().to('cuda:1') if torch.cuda.is_available() else torch.Tensor
     total_steps = args.epochs * ceil(len(datasets['train'])/ args.batch_size)
 
     x0 = total_steps/ 2
@@ -207,7 +219,7 @@ def main(args):
                 dataset=datasets[split],
                 batch_size=args.batch_size,
                 shuffle=split=='train',
-                num_workers=8,
+                num_workers= 6,  # cpu_count()//2,  # 8
                 pin_memory=torch.cuda.is_available()
             )
 
@@ -398,6 +410,8 @@ if __name__ == '__main__':
     parser.add_argument('-bin', '--save_model_path', type=str, default='bin')
 
     parser.add_argument('-se', '--save_every', type=int, default=20)
+
+    parser.add_argument('-lg', '--large_dataset', action='store_true')
 
 
     args = parser.parse_args()

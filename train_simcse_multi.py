@@ -1,3 +1,14 @@
+"""
+Changed:
+fixed input_dataset
+    removing last padding to last token in the sentence
+    max_sequence_length as input
+use job_lib for saving and loading pickle files
+# disable grad in the simcse
+word dropout and embedding dropout set to 0 since simCSE already has dropout
+Remove a ReLU in hidden2mean log
+"""
+
 import os
 import json
 import time
@@ -12,43 +23,17 @@ from collections import OrderedDict, defaultdict
 from setup import load
 load()
 # from ptb import PTB
-from input_dataset import InputDataset
-from utils import to_var, idx2word, expierment_name
-from model import VAEDecoder, VAEEncoder
+from input_dataset_simcse import InputDataset
+from utils import expierment_name
+from model3 import VAEDecoder, VAEEncoder
 # from model2 import VAEDecoder, VAEEncoder
-from torch import nn
 import random
 from math import ceil
 
-def create_batch(texts, teacher_forcing_prob):
-    input_ids = []
-    attention_masks = []
-    target_ids = []
-
-    for text in texts:
-        # Tokenize the input text
-        encoded = tokenizer.encode_plus(text, padding="max_length", truncation=True, max_length=128, return_tensors="pt")
-
-        # Add the input_ids and attention_mask to the batch
-        input_ids.append(encoded["input_ids"].squeeze(0))
-        attention_masks.append(encoded["attention_mask"].squeeze(0))
-
-        # Add the target_ids to the batch, with a chance of not using teacher forcing
-        if random.random() < teacher_forcing_prob:
-            target_ids.append(encoded["input_ids"].squeeze(0))
-        else:
-            # Use the model's predictions as the target
-            with torch.no_grad():
-                target = model.generate(input_ids, attention_masks)
-            target_ids.append(target.squeeze(0))
-
-    # Convert the batch to tensors
-    input_ids = torch.stack(input_ids, dim=0).to(device)
-    attention_masks = torch.stack(attention_masks, dim=0).to(device)
-    target_ids = torch.stack(target_ids, dim=0).to(device)
-
-    return input_ids, attention_masks, target_ids
-
+def to_var(x, device='cuda:0', requires_grad=False):
+    if torch.cuda.is_available():
+        x = x.to(device)
+    return x.requires_grad_(requires_grad)
 
 def main(args):
     ts = time.strftime('%Y-%b-%d-%H:%M:%S', time.gmtime())
@@ -62,7 +47,7 @@ def main(args):
         datasets[split] = InputDataset(
             data_dir=args.data_dir,
             # raw_data_filename='sentence_split_full_7061004_skip_first_0',
-            raw_data_filename='sentence_split_30000_skip_first_0',
+            raw_data_filename= 'sentence_split_full_7061004_skip_first_0' if args.large_dataset else 'sentence_split_99999_skip_first_0',
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
@@ -88,7 +73,7 @@ def main(args):
     sos_idx = datasets['train'].sos_idx  # eos_idx = datasets['train'].eos_idx
     encoder = VAEEncoder(**params)
     # decoder = VAEDecoder(**params, bert=encoder.bert)
-    decoder = VAEDecoder(**params, embedding=encoder.embedding)
+    decoder = VAEDecoder(**params, embedding=encoder.encoder.embeddings.word_embeddings)
 
     teacher_forcing_ratio = args.teacher_forcing
     
@@ -96,11 +81,13 @@ def main(args):
     print("Number of trainable parameters:", sum(p.numel() for p in encoder.parameters() if p.requires_grad) + sum(p.numel() for p in decoder.parameters() if p.requires_grad))
     print("Number of all parameters:", sum(p.numel() for p in encoder.parameters()) + sum(p.numel() for p in decoder.parameters()))
     if torch.cuda.is_available():
-        encoder = encoder.cuda()
-        decoder = decoder.cuda()
+        # encoder = encoder.cuda()
+        decoder = decoder.to('cuda:1')
+        encoder = encoder.to('cuda:0')
+        # decoder = decoder.cuda()
         print("Gpus:")
         for i in range(torch.cuda.device_count()):
-            print(torch.cuda.get_device_name(0))
+            print(torch.cuda.get_device_name(i))
         print("--------------------------------------")
 
     print(encoder)
@@ -162,7 +149,7 @@ def main(args):
     encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate) #, weight_decay=1e-3)
     decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate) #, weight_decay=3e-3)
 
-    tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
+    tensor = lambda: torch.cuda.FloatTensor().to('cuda:1') if torch.cuda.is_available() else torch.Tensor
     step = 0
 
     total_steps = args.epochs * ceil(len(datasets['train'])/ args.batch_size)
@@ -180,7 +167,7 @@ def main(args):
                 dataset=datasets[split],
                 batch_size=args.batch_size,
                 shuffle=split=='train',
-                # num_workers=cpu_count(),  # 8
+                num_workers=cpu_count() // 2,  # 8
                 pin_memory=torch.cuda.is_available()
             )
 
@@ -206,15 +193,26 @@ def main(args):
 
                 # Forward pass
                 # batch_size, sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths = encoder(batch['input'], batch['length'])  # use different embedding
-                sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = encoder(batch['input'], batch['length'])
+                
+                sorted_lengths, sorted_idx = torch.sort(batch['length'], descending=True)
+                _, reversed_idx = torch.sort(sorted_idx)
+                
+                mean, logv, z = encoder(batch['input'][sorted_idx], batch['input_attention_mask'][sorted_idx])
+                # print(f"batch size: {batch_size}, mean shape: {mean.shape}, logv shape: {logv.shape}, z shape: {z.shape}")
+                
+                # mean = mean[sorted_idx]
+                # logv = logv[sorted_idx]
+                # z = z[sorted_idx]
+                for k in ('length', 'target'):
+                    batch[k] = to_var(batch[k], device='cuda:1')
+                
+                z = z.to('cuda:1')
+
                 use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
-                # use_teacher_forcing = True
-                # print(use_teacher_forcing)
+
                 if use_teacher_forcing:
-                    params = batch['input'], batch['length'], sorted_idx, mean, logv, z, reversed_idx, sorted_lengths
+                    params = batch['input'], batch_size, sorted_idx, mean.to('cuda:1'), logv.to('cuda:1'), z, reversed_idx, sorted_lengths
                     logp, _ = decoder(use_teacher_forcing, params)
-                    # print("logp shape", logp.shape)
-                    # print("batch target shape", batch['target'].shape)
 
                     target = batch['target'][:, :torch.max(batch['length']).item()].contiguous().view(-1)
                     # print("target shape", target.shape)
@@ -227,57 +225,27 @@ def main(args):
                     params = input_sequence, z, True
                     nll_loss = 0
                     target_tensor = batch['target'][sorted_idx]
-                    # print(batch['length'])
-                    
-                    # ended_sequence_indices_set = set()
-                    # running_indices = torch.arange(batch_size)
 
-                    # hidden = None
-                    # print("EOS index", eos_idx)
-                    # print(datasets['train'].pad_idx)
-                    # print(batch['target'])
-                    # 1/0
-                    for di in range(max(batch['length'])):
+                    for di in range(torch.max(batch['length'])):
                         logp, hidden = decoder(use_teacher_forcing, params)
-                        # decoder_output, decoder_hidden = decoder(use_teacher_forcing, params)
-
-                        # # select top 1 word from output
-                        # topv, topi = logp.topk(1)
-                        # decoder_input = topi.squeeze()  # detach from history as input
 
                         # sample output
                         probs = logp.exp().squeeze()
                         m = torch.distributions.Categorical(probs)
                         decoder_input = m.sample()
 
-                        # print(8, target_tensor[:, di].shape, target_tensor[:, di])
-                        # print(8, target_tensor[:, di].shape)
-                        # print(9, target_tensor.shape)
                         logp = logp.squeeze(1)
-                        # local_loss = NLL(logp, target_tensor[:, di])
-                        # print("criterion(logp, target_tensor[di])", local_loss.shape)
-                        # print(local_loss)
-                        # 1/0
-                        # print(reversed_idx.shape, logp.shape)
+
                         nll_loss += NLL(logp, target_tensor[:, di])
                         
-                        # for seq_index, decoder_next_input in enumerate(decoder_input):
-                        #     if decoder_next_input.item() == eos_idx:
-                        #         ended_sequence_indices_set.add(seq_index)
-
-                        # print(params[0], decoder_input)
                         params = decoder_input, hidden, False
-                    # print(ended_sequence_indices_set)
-                    # 0/0
 
                 # loss calculation
                 NLL_loss, KL_loss, KL_weight = loss_fn(nll_loss,
                     batch['length'], mean, logv, args.anneal_function, step, args.k, args.x0)  # original x0
 
-                loss = (NLL_loss + KL_weight * KL_loss) / batch_size
-                # loss = (NLL_loss + max(min_kl_loss, KL_weight * KL_loss)) / batch_size
-                # print(loss)
-                # 0/0
+                loss = (NLL_loss + KL_weight * KL_loss.to('cuda:1')) / batch_size
+
                 # backward + optimization
                 if split == 'train':
                     encoder_optimizer.zero_grad()
@@ -350,15 +318,15 @@ if __name__ == '__main__':
     parser.add_argument('-bs', '--batch_size', type=int, default=32)
     parser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
 
-    parser.add_argument('-eb', '--embedding_size', type=int, default=300)
+    parser.add_argument('-eb', '--embedding_size', type=int, default=768)  # 300
     parser.add_argument('-rnn', '--rnn_type', type=str, default='gru')
-    parser.add_argument('-hs', '--hidden_size', type=int, default=256)
+    parser.add_argument('-hs', '--hidden_size', type=int, default=768)  # 256
     parser.add_argument('-nl', '--num_layers', type=int, default=1)
     parser.add_argument('-bi', '--bidirectional', action='store_true')
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
-    parser.add_argument('-wd', '--word_dropout', type=float, default=0.62)
+    parser.add_argument('-wd', '--word_dropout', type=float, default=.62)  # .62  0
     parser.add_argument('-tf', '--teacher_forcing', type=float, default=0.8)
-    parser.add_argument('-ed', '--embedding_dropout', type=float, default=0.5)
+    parser.add_argument('-ed', '--embedding_dropout', type=float, default=.5)  # .5  0
 
     parser.add_argument('-af', '--anneal_function', type=str, default='logistic')
     parser.add_argument('-k', '--k', type=float, default=0.0025)
@@ -370,7 +338,7 @@ if __name__ == '__main__':
     parser.add_argument('-bin', '--save_model_path', type=str, default='bin')
 
     parser.add_argument('-se', '--save_every', type=int, default=20)
-
+    parser.add_argument('-lg', '--large_dataset', action='store_true')
 
     args = parser.parse_args()
 

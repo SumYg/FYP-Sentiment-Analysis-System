@@ -1,3 +1,14 @@
+"""
+Changed:
+fixed input_dataset
+    removing last padding to last token in the sentence
+    max_sequence_length as input
+use job_lib for saving and loading pickle files
+# disable grad in the simcse
+word dropout and embedding dropout set to 0 since simCSE already has dropout
+Remove a ReLU in hidden2mean log
+"""
+
 import os
 import json
 import time
@@ -12,42 +23,13 @@ from collections import OrderedDict, defaultdict
 from setup import load
 load()
 # from ptb import PTB
-from input_dataset import InputDataset
+from input_dataset_simcse import InputDataset
 from utils import to_var, idx2word, expierment_name
-from model import VAEDecoder, VAEEncoder
+from model3 import VAEDecoder, VAEEncoder
 # from model2 import VAEDecoder, VAEEncoder
 from torch import nn
 import random
 from math import ceil
-
-def create_batch(texts, teacher_forcing_prob):
-    input_ids = []
-    attention_masks = []
-    target_ids = []
-
-    for text in texts:
-        # Tokenize the input text
-        encoded = tokenizer.encode_plus(text, padding="max_length", truncation=True, max_length=128, return_tensors="pt")
-
-        # Add the input_ids and attention_mask to the batch
-        input_ids.append(encoded["input_ids"].squeeze(0))
-        attention_masks.append(encoded["attention_mask"].squeeze(0))
-
-        # Add the target_ids to the batch, with a chance of not using teacher forcing
-        if random.random() < teacher_forcing_prob:
-            target_ids.append(encoded["input_ids"].squeeze(0))
-        else:
-            # Use the model's predictions as the target
-            with torch.no_grad():
-                target = model.generate(input_ids, attention_masks)
-            target_ids.append(target.squeeze(0))
-
-    # Convert the batch to tensors
-    input_ids = torch.stack(input_ids, dim=0).to(device)
-    attention_masks = torch.stack(attention_masks, dim=0).to(device)
-    target_ids = torch.stack(target_ids, dim=0).to(device)
-
-    return input_ids, attention_masks, target_ids
 
 
 def main(args):
@@ -58,11 +40,13 @@ def main(args):
     splits = ['train', 'valid']
 
     datasets = OrderedDict()
+    print(f"Use large dataset: {args.large_dataset}")
     for split in splits:
         datasets[split] = InputDataset(
             data_dir=args.data_dir,
             # raw_data_filename='sentence_split_full_7061004_skip_first_0',
-            raw_data_filename='sentence_split_30000_skip_first_0',
+            raw_data_filename= 'sentence_split_full_7061004_skip_first_0' if args.large_dataset else 'sentence_split_99999_skip_first_0',
+            # raw_data_filename='sentence_split_99999_skip_first_0',
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
@@ -88,7 +72,7 @@ def main(args):
     sos_idx = datasets['train'].sos_idx  # eos_idx = datasets['train'].eos_idx
     encoder = VAEEncoder(**params)
     # decoder = VAEDecoder(**params, bert=encoder.bert)
-    decoder = VAEDecoder(**params, embedding=encoder.embedding)
+    decoder = VAEDecoder(**params, embedding=encoder.encoder.embeddings.word_embeddings)
 
     teacher_forcing_ratio = args.teacher_forcing
     
@@ -206,12 +190,22 @@ def main(args):
 
                 # Forward pass
                 # batch_size, sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths = encoder(batch['input'], batch['length'])  # use different embedding
-                sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = encoder(batch['input'], batch['length'])
+                
+                sorted_lengths, sorted_idx = torch.sort(batch['length'], descending=True)
+                _, reversed_idx = torch.sort(sorted_idx)
+                
+                mean, logv, z = encoder(batch['input'][sorted_idx], batch['input_attention_mask'][sorted_idx])
+                # print(f"batch size: {batch_size}, mean shape: {mean.shape}, logv shape: {logv.shape}, z shape: {z.shape}")
+                
+                # mean = mean[sorted_idx]
+                # logv = logv[sorted_idx]
+                # z = z[sorted_idx]
+
                 use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
                 # use_teacher_forcing = True
                 # print(use_teacher_forcing)
                 if use_teacher_forcing:
-                    params = batch['input'], batch['length'], sorted_idx, mean, logv, z, reversed_idx, sorted_lengths
+                    params = batch['input'], batch_size, sorted_idx, mean, logv, z, reversed_idx, sorted_lengths
                     logp, _ = decoder(use_teacher_forcing, params)
                     # print("logp shape", logp.shape)
                     # print("batch target shape", batch['target'].shape)
@@ -350,15 +344,15 @@ if __name__ == '__main__':
     parser.add_argument('-bs', '--batch_size', type=int, default=32)
     parser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
 
-    parser.add_argument('-eb', '--embedding_size', type=int, default=300)
+    parser.add_argument('-eb', '--embedding_size', type=int, default=768)  # 300
     parser.add_argument('-rnn', '--rnn_type', type=str, default='gru')
-    parser.add_argument('-hs', '--hidden_size', type=int, default=256)
+    parser.add_argument('-hs', '--hidden_size', type=int, default=768)  # 256
     parser.add_argument('-nl', '--num_layers', type=int, default=1)
     parser.add_argument('-bi', '--bidirectional', action='store_true')
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
-    parser.add_argument('-wd', '--word_dropout', type=float, default=0.62)
+    parser.add_argument('-wd', '--word_dropout', type=float, default=.62)  # .62  0
     parser.add_argument('-tf', '--teacher_forcing', type=float, default=0.8)
-    parser.add_argument('-ed', '--embedding_dropout', type=float, default=0.5)
+    parser.add_argument('-ed', '--embedding_dropout', type=float, default=.5)  # .5  0
 
     parser.add_argument('-af', '--anneal_function', type=str, default='logistic')
     parser.add_argument('-k', '--k', type=float, default=0.0025)
@@ -371,6 +365,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-se', '--save_every', type=int, default=20)
 
+    parser.add_argument('-lg', '--large_dataset', action='store_true')
 
     args = parser.parse_args()
 

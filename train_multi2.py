@@ -9,13 +9,15 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
 from collections import OrderedDict, defaultdict
 
+from transformers import BertModel
+
 from setup import load
 load()
 # from ptb import PTB
 from input_dataset import InputDataset
 from utils import to_var, idx2word, expierment_name
-from model import VAEDecoder, VAEEncoder
-# from model2 import VAEDecoder, VAEEncoder
+# from model import VAEDecoder, VAEEncoder
+from model2 import VAEDecoder, VAEEncoder, get_bert_embedding
 from torch import nn
 import random
 from math import ceil
@@ -62,12 +64,15 @@ def main(args):
         datasets[split] = InputDataset(
             data_dir=args.data_dir,
             # raw_data_filename='sentence_split_full_7061004_skip_first_0',
-            raw_data_filename='sentence_split_30000_skip_first_0',
+            raw_data_filename='sentence_split_99999_skip_first_0',
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
             min_occ=args.min_occ
         )
+
+    pretrained_name = 'bert-base-uncased'
+    embedding_size, bert_embedding = get_bert_embedding(pretrained_name)
 
     params = dict(
         vocab_size=datasets['train'].vocab_size,
@@ -76,7 +81,8 @@ def main(args):
         pad_idx=datasets['train'].pad_idx,
         unk_idx=datasets['train'].unk_idx,
         max_sequence_length=args.max_sequence_length,
-        embedding_size=args.embedding_size,
+        embedding_size=embedding_size,  # args.embedding_size
+        embedding=bert_embedding,
         rnn_type=args.rnn_type,
         hidden_size=args.hidden_size,
         word_dropout=args.word_dropout,
@@ -86,22 +92,41 @@ def main(args):
         bidirectional=args.bidirectional
     )
     sos_idx = datasets['train'].sos_idx  # eos_idx = datasets['train'].eos_idx
+
+    # devices = [torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())]
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     encoder = VAEEncoder(**params)
+    # encoder.to(devices)
     # decoder = VAEDecoder(**params, bert=encoder.bert)
-    decoder = VAEDecoder(**params, embedding=encoder.embedding)
+    decoder = VAEDecoder(**params)
+    # decoder.to(devices)
+    if torch.cuda.device_count() > 1:
+        # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        encoder = nn.DataParallel(encoder)
+        encoder.to(device)
+        decoder = nn.DataParallel(decoder)
+        decoder.to(device)
+    elif torch.cuda.device_count() == 1:
+        encoder = encoder.to(device)
+        decoder = decoder.to(device)
+
+
+    # decoder = VAEDecoder(**params, embedding=encoder.embedding)
 
     teacher_forcing_ratio = args.teacher_forcing
     
     # model.load_state_dict(torch.load("bin/2023-Jan-06-continue/E49.pytorch"))
     print("Number of trainable parameters:", sum(p.numel() for p in encoder.parameters() if p.requires_grad) + sum(p.numel() for p in decoder.parameters() if p.requires_grad))
     print("Number of all parameters:", sum(p.numel() for p in encoder.parameters()) + sum(p.numel() for p in decoder.parameters()))
-    if torch.cuda.is_available():
-        encoder = encoder.cuda()
-        decoder = decoder.cuda()
-        print("Gpus:")
-        for i in range(torch.cuda.device_count()):
-            print(torch.cuda.get_device_name(0))
-        print("--------------------------------------")
+    # if torch.cuda.is_available():
+    #     encoder = encoder.cuda()
+    #     decoder = decoder.cuda()
+    #     print("Gpus:")
+    #     for i in range(torch.cuda.device_count()):
+    #         print(torch.cuda.get_device_name(0))
+    #     print("--------------------------------------")
 
     print(encoder)
     print(decoder)
@@ -115,6 +140,8 @@ def main(args):
 
     save_model_path = os.path.join(args.save_model_path, ts)
     os.makedirs(save_model_path)
+
+    params['embedding'] = pretrained_name
 
     with open(os.path.join(save_model_path, 'model_params.json'), 'w') as f:
         json.dump(params, f, indent=4)
@@ -180,7 +207,7 @@ def main(args):
                 dataset=datasets[split],
                 batch_size=args.batch_size,
                 shuffle=split=='train',
-                # num_workers=cpu_count(),  # 8
+                num_workers=max(1, cpu_count() // 2),  # 8,
                 pin_memory=torch.cuda.is_available()
             )
 
@@ -206,6 +233,7 @@ def main(args):
 
                 # Forward pass
                 # batch_size, sorted_idx, mean, logv, z, reversed_idx, input_embedding, sorted_lengths = encoder(batch['input'], batch['length'])  # use different embedding
+                # print(batch['input'], batch['length'])
                 sorted_idx, mean, logv, z, reversed_idx, sorted_lengths = encoder(batch['input'], batch['length'])
                 use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
                 # use_teacher_forcing = True
@@ -342,7 +370,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--data_dir', type=str, default='dataset')
     parser.add_argument('--create_data', action='store_true')
-    parser.add_argument('--max_sequence_length', type=int, default=100)  # seems no effect before
+    parser.add_argument('--max_sequence_length', type=int, default=100)
     parser.add_argument('--min_occ', type=int, default=1)
     parser.add_argument('--test', action='store_true')
 

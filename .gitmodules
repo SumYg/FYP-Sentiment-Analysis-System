@@ -1,3 +1,6 @@
 [submodule "data"]
 	path = data
 	url = https://github.com/SumYg/FYP-Sentiment-Analysis-System-Data.git
+[submodule "SentenceVAE"]
+	path = SentenceVAE
+	url = https://github.com/SumYg/Sentence-VAE
