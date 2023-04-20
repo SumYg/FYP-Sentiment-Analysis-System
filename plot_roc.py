@@ -4,7 +4,8 @@ from grouping import OpinionRepresenter, OpinionGrouper
 from datasets import load_dataset
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score
+
 
 if __name__ == '__main__':
     split = 'validation'
@@ -36,50 +37,50 @@ if __name__ == '__main__':
     # exit()
 
 
-    # # sentiment
-    # dataset = load_dataset('glue', 'sst2')[split]
+    # sentiment
+    dataset = load_dataset('glue', 'sst2')[split]
 
-    # # g = OpinionGrouper('bin/lstm_sentiment/E29.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
-    # # representer = OpinionRepresenter(dataset['sentence'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
-
-
-    # g = OpinionGrouper('bin/2023-Apr-10-20:13:14/E4.pytorch', batch_size=128, score_threshold=0.6)
-    # pretrained_model_name = g.pretrained_model_name
+    # g = OpinionGrouper('bin/lstm_sentiment/E29.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
+    # representer = OpinionRepresenter(dataset['sentence'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
 
 
-    # print(dataset['sentence'][:3])
-    # print(len(dataset))
-    # representer = OpinionRepresenter(dataset['sentence'], pretrained_model_name, batch_size=g.batch_size)
-
-    # sentiment_score = g.get_sentiment_score(representer)
-
-    # print(sentiment_score.shape)
-
-    # score = sentiment_score
-
-
-    # entailment
-    split = 'test'
-    dataset = load_dataset('snli')[split].map(lambda x: {'label': int(x['label'] == 0)})
-
-    # g = OpinionGrouper('bin/lstm_entailment/E44.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
-
-    # premise_representer = OpinionRepresenter(dataset['premise'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
-    # hypothesis_representer = OpinionRepresenter(dataset['hypothesis'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
-
-    # simcse
-    g = OpinionGrouper('bin/2023-Apr-09-00:49:15/E4.pytorch', batch_size=128, score_threshold=0.6)
+    g = OpinionGrouper('bin/2023-Apr-10-20:13:14/E4.pytorch', batch_size=128, score_threshold=0.6)
     pretrained_model_name = g.pretrained_model_name
 
+
+    print(dataset['sentence'][:3])
+    print(len(dataset))
+    representer = OpinionRepresenter(dataset['sentence'], pretrained_model_name, batch_size=g.batch_size)
+
+    sentiment_score = g.get_sentiment_score(representer)
+
+    print(sentiment_score.shape)
+
+    score = sentiment_score
+
+
+    # # entailment
+    # split = 'test'
+    # dataset = load_dataset('snli')[split].map(lambda x: {'label': int(x['label'] == 0)})
+
+    # # g = OpinionGrouper('bin/lstm_entailment/E44.pytorch', batch_size=128, score_threshold=0.6)  # lstm vae
+
+    # # premise_representer = OpinionRepresenter(dataset['premise'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+    # # hypothesis_representer = OpinionRepresenter(dataset['hypothesis'], 'bert-base-uncased', batch_size=g.batch_size, local_model_type='lstm', local_model_path='bin/lstm/E29.pytorch')
+
+    # # simcse
+    # g = OpinionGrouper('bin/2023-Apr-09-00:49:15/E4.pytorch', batch_size=128, score_threshold=0.6)
+    # pretrained_model_name = g.pretrained_model_name
+
     
-    premise_representer = OpinionRepresenter(dataset['premise'], pretrained_model_name, batch_size=g.batch_size)
-    hypothesis_representer = OpinionRepresenter(dataset['hypothesis'], pretrained_model_name, batch_size=g.batch_size)
+    # premise_representer = OpinionRepresenter(dataset['premise'], pretrained_model_name, batch_size=g.batch_size)
+    # hypothesis_representer = OpinionRepresenter(dataset['hypothesis'], pretrained_model_name, batch_size=g.batch_size)
 
-    entailment_score = g.get_ordered_given_pairs_score(premise_representer, hypothesis_representer)
+    # entailment_score = g.get_ordered_given_pairs_score(premise_representer, hypothesis_representer)
 
-    print(entailment_score.shape)
+    # print(entailment_score.shape)
 
-    score = entailment_score
+    # score = entailment_score
 
 
 
@@ -110,4 +111,7 @@ if __name__ == '__main__':
     # report the f1 score
     y_pred = (score >= best_threshold).cpu().detach().numpy()
     print(f"F1={f1_score(dataset['label'], y_pred)}")
+
+    # report the accuracy
+    print(f"Accuracy={accuracy_score(dataset['label'], y_pred)}")
 
