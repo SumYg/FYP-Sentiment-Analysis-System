@@ -247,11 +247,19 @@ class OpinionGrouper:
         print(scores.shape)
         return scores if scores.nelement() > 0 else torch.Tensor([])
    
-    def get_aggregated_score(self, representations):
+    def get_aggregated_score(self, representations, posts):
         scores = self.get_sentiment_score(representations)
         print(scores.device)
-        passed_threshold = scores[scores >= self.score_threshold]
-        return torch.mean(passed_threshold).item() if passed_threshold.nelement() > 0 else 0.0
+        # get the indices of the sentneces that pass the threshold
+        passed_threshold = scores >= self.score_threshold
+        # get the indices when passed_threshold is True
+        indices = torch.nonzero(passed_threshold, as_tuple=True)[0]
+        related_post_id = set()
+        for i in indices:
+            related_post_id.add(posts[i].post_id)
+        return len(related_post_id) / len(posts)
+        # passed_threshold = scores[scores >= self.score_threshold]
+        # return torch.mean(passed_threshold).item() if passed_threshold.nelement() > 0 else 0.0
     
     def get_ordered_given_pairs_score(self, r1, r2):
         # scores = []
@@ -397,7 +405,7 @@ def process(posts, text, max_similar_opinions=10):
     representer = OpinionRepresenter(text, pretrained_model_name, batch_size=g.batch_size)
     print(pretrained_model_name)
     # semtiment
-    semtiment = g.get_aggregated_score(representer)
+    semtiment = g.get_aggregated_score(representer, posts)
     # del g
     logging.info("Sentiment Finished ================================================")
     logging.debug("Memory Usage:", torch.cuda.memory_allocated(), 'bytes')
