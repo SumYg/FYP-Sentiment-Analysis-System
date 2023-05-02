@@ -256,7 +256,7 @@ class OpinionGrouper:
         indices = torch.nonzero(passed_threshold, as_tuple=True)[0]
         related_post_id = set()
         for i in indices:
-            related_post_id.add(posts[i].post_id)
+            related_post_id.add(posts[i][2])
         return len(related_post_id) / len(posts)
         # passed_threshold = scores[scores >= self.score_threshold]
         # return torch.mean(passed_threshold).item() if passed_threshold.nelement() > 0 else 0.0
